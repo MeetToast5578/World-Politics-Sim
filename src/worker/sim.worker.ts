@@ -47,7 +47,13 @@ function diplomacyDetail(c: number) {
 function metrics(): Record<string, number[]> {
   const st = sim.st, { f, n, history } = st;
   const out: Record<string, number[]> = { pop: [], gdp: [], gdpPc: [], growth: [], tfr: [], lifeExp: [], old: [], debt: [], mil: [], milexShare: [], effectiveness: [], voice: [], unemp: [], inflation: [], trade: [], agri: [], oilExp: [],
-    demo: [], regime: [], approval: [], unrest: [], coupRisk: [], relPolar: [], nonrel: [], majorRel: [], relSel: [], sanctionLoad: [], bloc: [] };
+    demo: [], regime: [], approval: [], unrest: [], coupRisk: [], relPolar: [], nonrel: [], majorRel: [], relSel: [], sanctionLoad: [], bloc: [], war: [] };
+  // war status: 3 fighting another country, 2 civil war (1,000+ battle deaths a year), 1 smaller armed conflict, 0 peace
+  const war = new Array(n).fill(0);
+  for (const w of st.wars) {
+    if (w.kind === 'interstate') for (const c of [...w.a, ...w.b]) war[c] = 3;
+    else war[w.loc] = Math.max(war[w.loc], w.peak >= 1000 && w.rate >= 500 ? 2 : 1);
+  }
   const R = st.nRel;
   const blocs = largestBlocs();
   const H = history.years.length, g = history.data.gdp;
@@ -80,6 +86,7 @@ function metrics(): Record<string, number[]> {
     out.relSel.push(q >= 0 ? st.pair.trust[q] : NaN);
     out.sanctionLoad.push(f.sanctionLoad[c]);
     out.bloc.push(blocs.of[c]);
+    out.war.push(war[c]);
   }
   return out;
 }
@@ -99,6 +106,7 @@ function frame(): Frame {
     type: 'frame', day: st.day, startDay: st.startDay, seed: st.seed, playing, branches: st.branches, metrics: m,
     world: { pop, gdp, old: old / pop, oil: Math.exp(st.g.oilLn), events: st.events.length, years: st.history.years, popSeries, gdpSeries },
     blocLabels: largestBlocs().labels,
+    wars: st.wars.map((w) => ({ id: w.id, kind: w.kind, a: w.a, b: w.b, loc: w.loc, start: w.start, goal: w.goal, name: w.name, deaths: w.deaths, rate: w.rate, score: w.score, occ: w.occ })),
     newEvents, resetEvents, detail: null, perf: { msPerSimYear },
   };
   sentEvents = st.events.length;

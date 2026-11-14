@@ -7,6 +7,8 @@ export interface Story { headline: string; why: string }
 const pct = (v: number, d = 0) => `${(v * 100).toFixed(d)}%`;
 const people = (v: number) => (v >= 1e9 ? `${+(v / 1e9).toFixed(1)} billion` : `${+(v / 1e6).toFixed(1)} million`);
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
+const deaths = (v: number) => (v >= 1e6 ? `${+(v / 1e6).toFixed(1)} million` : v >= 1e4 ? `${Math.round(v / 1e3)},000` : v >= 1000 ? `${(Math.round(v / 100) * 100).toLocaleString('en')}` : v >= 50 ? `${Math.round(v / 10) * 10}` : 'fewer than 50');
+const years = (y: number) => (y < 1 ? `${Math.max(1, Math.round(y * 12))} month${Math.round(y * 12) === 1 ? '' : 's'}` : `${Math.round(y)} year${Math.round(y) === 1 ? '' : 's'}`);
 const relation = (t: number) => (t < -0.5 ? 'deep distrust' : t < 0 ? 'mutual distrust' : t < 0.4 ? 'lukewarm relations' : 'good relations');
 
 export function describeEvent(e: SimEvent, name: (c: number) => string): Story {
@@ -72,6 +74,34 @@ export function describeEvent(e: SimEvent, name: (c: number) => string): Story {
       return s(`${c} leaves its alliance with ${o || 'its partners'}`, `Relations with the other members had soured.`);
     case 'alliance_formed':
       return s(`${c} and ${o} sign a defence pact`, `Both feel threatened and trust each other.`);
+    case 'civil_war_started':
+      return s(`Armed rebellion breaks out in ${c}`, `Unrest was ${pct(x.unrest)}${x.regime === 1 ? ' under an electoral autocracy' : ''}${x.polar > 0.5 ? ', with deep religious divisions' : ''}${x.income < 5000 ? ' in a poor country' : ''}. The chance of this in a given year was ${pct(x.hazard, 1)}.`);
+    case 'civil_war_escalated':
+      return s(`Fighting in ${c} becomes a full civil war`, `Battles are now killing about ${deaths(e.v!)} people a year.`);
+    case 'civil_war_won':
+      return s(`${c}'s government defeats the rebels`, `After ${years(x.years)} of fighting and ${deaths(x.deaths)} battle deaths.`);
+    case 'rebels_won':
+      return s(`Rebels take power in ${c}`, `After ${years(x.years)} of civil war and ${deaths(x.deaths)} battle deaths. ${e.v ? 'They promise elections.' : 'They rule without elections.'}`);
+    case 'autonomy_won':
+      return s(`Rebels in ${c} win self-rule for their region`, `After ${years(x.years)} of fighting. ${c} keeps its borders, but the region governs itself.`);
+    case 'peace_deal':
+      return s(`Peace agreement ends the fighting in ${c}`, `After ${years(x.years)} and ${deaths(x.deaths)} battle deaths.`);
+    case 'conflict_faded':
+      return s(`Fighting dies down in ${c}`, `No side won; the conflict lasted ${years(x.years)} and cost ${deaths(x.deaths)} lives in battle.`);
+    case 'war_started':
+      return s(`${c} goes to war with ${o}`, `The two had ${relation(x.trust)}${x.grievance > 0.5 ? ' and a history of conflict' : ''}.`);
+    case 'war_joined':
+      return s(`${c} enters the war against ${o}`, x.ally !== undefined ? `To defend its ally ${name(x.ally)}.` : 'To honour a defence treaty.');
+    case 'war_won':
+      return s(`${c} wins its war with ${o}`, `After ${years(x.years)} and ${deaths(x.deaths)} battle deaths.`);
+    case 'ceasefire':
+      return s(`Ceasefire between ${c} and ${o}`, `Neither side could win. The war lasted ${years(x.years)} and cost ${deaths(x.deaths)} lives in battle.`);
+    case 'territory_annexed':
+      return s(`${c} annexes territory from ${o}`, `It keeps the ${pct(x.share)} of ${o} its army holds, home to ${people(e.v!)} people.`);
+    case 'regime_imposed':
+      return s(`${c} installs a new government in ${o}`, `After defeating ${o}'s army.`);
+    case 'nuclear_strike':
+      return s(`${c} uses nuclear weapons against ${o}`, `An estimated ${deaths(e.v!)} people are killed. ${c} was facing ${x.occ > 0.2 ? `the occupation of ${pct(x.occ)} of its territory` : 'defeat'}. Markets crash and fear spreads around the world.`);
     default:
       return s(`${c}: ${e.k.replace(/_/g, ' ')}`);
   }
@@ -82,8 +112,10 @@ export const eventText = (e: SimEvent, name: (c: number) => string) => { const t
 
 /** How newsworthy an event is: 3 = world-changing, 2 = major, 1 = routine. Scaled by the countries' size in the UI. */
 export const IMPORTANCE: Record<string, number> = {
-  oil_shock: 3, gdp_rank_up: 3, coup: 3, revolution: 3, regime_overthrown: 3, sovereign_default: 3, alliance_joined: 3, alliance_left: 3, alliance_formed: 3,
-  democratization: 2, autocratization: 2, government_collapse: 2, election_lost: 2, diplomatic_crisis: 2, sanctions_imposed: 2, un_sanctions_lifted: 2,
+  oil_shock: 3, war_started: 3, war_joined: 3, war_won: 3, ceasefire: 3, territory_annexed: 3, regime_imposed: 3, nuclear_strike: 3,
+  rebels_won: 3, civil_war_escalated: 3, coup: 3, revolution: 3, regime_overthrown: 3, sovereign_default: 3, alliance_joined: 3, alliance_left: 3, alliance_formed: 3,
+  gdp_rank_up: 2, democratization: 2, autocratization: 2, government_collapse: 2, election_lost: 2, diplomatic_crisis: 2, sanctions_imposed: 2, un_sanctions_lifted: 2,
+  civil_war_started: 2, civil_war_won: 2, autonomy_won: 2, peace_deal: 2, conflict_faded: 1,
   pop_peak: 2, inflation_high: 2, recession_start: 2, protests: 2, coup_failed: 2, elections_restored: 2,
   election_won: 1, recession_end: 1, debt_above: 1, pop_above: 1, pop_below: 1, sanctions_lifted: 1, inflation_tamed: 1,
 };

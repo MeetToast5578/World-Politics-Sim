@@ -1,10 +1,12 @@
 // Simulation: owns a WorldState and advances it through a fixed, documented update order.
 //
 // Time-step architecture (see docs/DESIGN.md §4). The clock is an integer day. Systems run on calendar boundaries:
+//   1st of each month  : conflict (fighting, casualties, refugees, war damage, war endings)
 //   1 Jan/Apr/Jul/Oct  : economy (quarterly: oil price, TFP, cycle, inflation, debt) -> politics (quarterly)
 //                        -> chronicle (quarterly)
 //   every 1 Jan        : demography (cohort-component step + transition) -> economy (yearly structure)
 //                        -> religion (secularisation) -> diplomacy (relations, crises, sanctions, alliances)
+//                        -> conflict (yearly: onsets of civil and interstate wars, allies joining)
 //                        -> chronicle (yearly) -> history record
 // On 1 January the economy's quarter runs before demography, so both read the population of the year just ended.
 // Order within a boundary is fixed so each system reads a consistent state. Days between boundaries have no
@@ -22,8 +24,9 @@ import { initPolitics, politicsQuarterly } from './systems/politics';
 import { buildPairs, initDiplomacy, diplomacyYearly, applyTradeEffects, baselineSanction, type PairNet } from './systems/diplomacy';
 import { PAIR_FIELDS, type PairField } from './state';
 import { chronicleQuarterly, chronicleYearly } from './systems/chronicle';
+import { buildConflictNet, initConflict, conflictMonthly, conflictYearly, type ConflictNet } from './systems/conflict';
 
-export const RNG_STREAMS = ['economy', 'commodity', 'politics', 'diplomacy'] as const;
+export const RNG_STREAMS = ['economy', 'commodity', 'politics', 'diplomacy', 'conflict'] as const;
 
 export interface SimConfig { seed: number; startDate?: string; params?: Partial<Params> }
 
@@ -36,6 +39,8 @@ export class Simulation {
   readonly trade: TradeNet;
   /** Diplomatic pair list: derived from the baseline only (like the trade network). */
   readonly pairs: PairNet;
+  /** Distances, land borders and nuclear states for the conflict system (baseline only). */
+  readonly cnet: ConflictNet;
   private rngs: Record<string, Rng> = {};
 
   constructor(baseline: Baseline, cfg: SimConfig) {
@@ -55,6 +60,8 @@ export class Simulation {
     this.reseed(this.st.seed);
     initPolitics(this.st, baseline, this.params, this.rngs.politics);
     initDiplomacy(this.st, baseline, this.params, this.trade, this.pairs);
+    this.cnet = buildConflictNet(baseline);
+    initConflict(this.st, baseline, this.params, this.cnet, this.pairs);
     chronicleYearly(this.st); // establishes milestone levels at t0 without emitting
     this.recordHistory();
   }
@@ -85,6 +92,7 @@ export class Simulation {
   private boundary(day: number) {
     const { m } = civilFromDays(day);
     const st = this.st, p = this.params;
+    conflictMonthly(st, p, this.rngs.conflict, this.cnet, this.pairs);
     if ((m - 1) % 3 === 0) {
       economyQuarterly(st, p, this.rngs.economy, this.rngs.commodity, this.trade, (c, x) => st.events.push({ d: st.day, k: 'sovereign_default', c, v: x.debtRatio, x }));
       politicsQuarterly(st, p, this.rngs.politics, this.trade);
@@ -95,6 +103,7 @@ export class Simulation {
       economyYearly(st, this.baseline, p, this.trade);
       religionYearly(st, this.baseline, p);
       diplomacyYearly(st, this.baseline, p, this.rngs.diplomacy, this.trade, this.pairs);
+      conflictYearly(st, p, this.rngs.conflict, this.cnet, this.pairs);
       chronicleYearly(st);
       this.recordHistory();
     }

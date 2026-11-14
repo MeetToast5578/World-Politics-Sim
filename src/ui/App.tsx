@@ -8,7 +8,7 @@ import { MapView, type MapRegion } from './MapView';
 import { CountryPanel } from './CountryPanel';
 import { WorldPanel } from './WorldPanel';
 import { Timeline } from './Timeline';
-import { MAP_MODES, categoryOf, makeScale, politicalColor, NO_DATA } from './mapModes';
+import { MAP_MODES, categoryOf, makeScale, politicalColor, NO_DATA, WAR_LABELS } from './mapModes';
 import { putSave, getSave, downloadText } from './storage';
 import { REGIME_WORDS } from './words';
 
@@ -104,7 +104,7 @@ export function App() {
   const featured = MAP_MODES.filter((m) => m.featured);
   const groups = [...new Set(MAP_MODES.filter((m) => !m.featured).map((m) => m.group))];
   const cats = mode.kind === 'categorical' && modeActive
-    ? [...new Map(regions.filter((r) => r.owner >= 0).map((r) => categoryOf(mode, r.owner, frame.metrics, baseline, frame.blocLabels))).entries()].sort((x, y) => (mode.id === 'regime' ? REGIME_WORDS.indexOf(x[0]) - REGIME_WORDS.indexOf(y[0]) : x[0].localeCompare(y[0])))
+    ? [...new Map(regions.filter((r) => r.owner >= 0).map((r) => categoryOf(mode, r.owner, frame.metrics, baseline, frame.blocLabels))).entries()].sort((x, y) => (mode.id === 'regime' ? REGIME_WORDS.indexOf(x[0]) - REGIME_WORDS.indexOf(y[0]) : mode.id === 'war' ? WAR_LABELS.indexOf(x[0]) - WAR_LABELS.indexOf(y[0]) : x[0].localeCompare(y[0])))
     : [];
 
   return (
@@ -200,12 +200,12 @@ export function App() {
         <aside className="side" aria-label={frame.detail && selected !== null ? 'Country' : 'World'}>
           {frame.detail && selected !== null
             ? <CountryPanel key={selected} baseline={baseline} detail={frame.detail} events={events.current} name={name} weight={weight}
-                coupRisk={frame.metrics.coupRisk[selected]} onSelect={setSelected} onClose={() => setSelected(null)} />
+                coupRisk={frame.metrics.coupRisk[selected]} wars={frame.wars} startDay={frame.startDay} onSelect={setSelected} onClose={() => setSelected(null)} />
             : <WorldPanel frame={frame} events={events.current} name={name} weight={weight} onSelect={setSelected} />}
         </aside>
       </main>
 
-      <Timeline startDay={frame.startDay} day={frame.day} events={events.current} branches={frame.branches} busy={busy} onRewind={rewind} />
+      <Timeline startDay={frame.startDay} day={frame.day} events={events.current} branches={frame.branches} busy={busy} weight={weight} onRewind={rewind} />
     </div>
   );
 }

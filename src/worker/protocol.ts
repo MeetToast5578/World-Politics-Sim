@@ -28,6 +28,16 @@ export interface CountryDetail {
   };
 }
 
+/** An armed conflict under way (see engine War). */
+export interface WarInfo {
+  id: number; kind: 'interstate' | 'civil'; a: number[]; b: number[]; loc: number; start: number;
+  goal: 'government' | 'territory'; name: string | null;
+  deaths: number;  // battle deaths since the simulation started
+  rate: number;    // battle deaths per year now
+  score: number;   // −1..1, > 0: side a (attacker / government) winning
+  occ: number;     // share of loc held by the attacker (interstate)
+}
+
 export interface Frame {
   type: 'frame';
   day: number;
@@ -38,6 +48,7 @@ export interface Frame {
   metrics: Record<string, number[]>; // map mode -> value per country
   world: { pop: number; gdp: number; old: number; oil: number; events: number; years: number[]; popSeries: number[]; gdpSeries: number[] };
   blocLabels: string[]; // labels of multilateral defence treaties, index = metrics.bloc value
+  wars: WarInfo[];
   newEvents: SimEvent[];
   resetEvents: boolean; // true: newEvents is the full list (after load / rewind / restart)
   detail: CountryDetail | null;

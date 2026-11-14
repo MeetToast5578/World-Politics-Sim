@@ -5,7 +5,7 @@
 //   legit       regime legitimacy (0-1): initialised from WGI political stability, moves with remembered
 //               performance (long average of approval) and democratic change
 //   unrest      (0-1): initialised from WGI political stability; moves with misery, low approval, lost legitimacy,
-//               religious polarisation and the youth bulge, each relative to the country's own baseline
+//               religious polarisation, the youth bulge and war on the territory, each relative to the country's own baseline
 //   ideology    governing orientation, −1 left … +1 right (no open data: drawn at start); shifts government size
 // Events (each records the values that produced it):
 //   elections   on a fixed term in electoral regimes; incumbent survival = logistic(approval, regime openness, terms)
@@ -127,7 +127,8 @@ export function politicsQuarterly(st: WorldState, p: Params, rng: Rng, trade: Tr
     // unrest, relative to the country's own baseline
     const u = P.unrestW;
     const uLogit = logit(f.unrest0[c]) + u.misery * (mis - f.misery0[c]) + u.approval * (0.5 - f.approval[c])
-      + u.legitimacy * (f.legit0[c] - f.legit[c]) + u.polarisation * (f.relPolar[c] - f.polar0[c]) + u.youth * (youthShare(st, c) - f.youth0[c]);
+      + u.legitimacy * (f.legit0[c] - f.legit[c]) + u.polarisation * (f.relPolar[c] - f.polar0[c]) + u.youth * (youthShare(st, c) - f.youth0[c])
+      + p.conflict.damage.unrest * (f.warLoad[c] - f.warLoad0[c]); // fighting on the territory, relative to the start
     const prevUnrest = f.unrest[c];
     f.unrest[c] = clamp(f.unrest[c] + (logistic(uLogit) - f.unrest[c]) * ru + P.unrestNoise * uU, 0.01, 0.99);
     // instability costs output (Aisen & Veiga 2013): unrest above baseline lowers the domestic cycle

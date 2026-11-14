@@ -23,6 +23,7 @@ export const MAP_MODES: MapMode[] = [
   { id: 'pop', label: 'Population', group: 'Main', kind: 'sequential', metric: 'pop', log: true, fmt: fmtNum, featured: true, about: 'Number of people.', low: 'Fewer', high: 'More' },
   { id: 'regime', label: 'Democracy', group: 'Main', kind: 'categorical', metric: 'regime', featured: true, about: 'How each country is governed, from dictatorship to full democracy.' },
   { id: 'unrest', label: 'Unrest', group: 'Main', kind: 'sequential', metric: 'unrest', fmt: (v) => fmtPct(v), featured: true, about: 'How angry and restless people are. High unrest can lead to protests, coups and revolutions.', low: 'Calm', high: 'Crisis' },
+  { id: 'war', label: 'Wars', group: 'Main', kind: 'categorical', metric: 'war', featured: true, about: 'Where people are fighting: wars between countries, civil wars, and smaller armed conflicts (at least 25 battle deaths a year, as counted by UCDP).' },
   { id: 'alliances', label: 'Alliances', group: 'Main', kind: 'categorical', metric: 'bloc', featured: true, about: "Each country's largest military alliance." },
   { id: 'relations', label: 'Friends & rivals', group: 'Main', kind: 'diverging', metric: 'relSel', fmt: (v) => v.toFixed(2), featured: true, needsSelection: true, about: 'How every country feels about the country you selected.', low: 'Hostile', high: 'Friendly' },
 
@@ -66,6 +67,8 @@ export const GOV_LABELS: Record<GovForm, string> = {
 
 export const REGIME_LABELS = REGIME_WORDS;
 const REGIME_COLORS = ['#c0432f', '#e8a079', '#8ab8d9', '#2e6db4'];
+export const WAR_LABELS = ['At peace', 'Armed conflict', 'Civil war', 'War with another country'];
+const WAR_COLORS = ['#eef1f3', '#f0c48a', '#e07b54', '#a3271f'];
 
 /** Colours per religion, by family hue (Christianity blues, Islam greens, Judaism gold, Buddhism orange…). */
 const RELIGION_COLORS: Record<string, string> = {
@@ -84,6 +87,7 @@ export function categoryOf(mode: MapMode, owner: number, metrics: Record<string,
   if (mode.id === 'alliances') { const k = metrics.bloc[owner]; return k < 0 ? ['No military alliance', NO_DATA] : [blocLabels[k], BLOC_COLORS[k % BLOC_COLORS.length]]; }
   if (mode.id === 'government') { const g = b.countries[owner].government.form; return [GOV_LABELS[g], GOV_COLORS[g]]; }
   if (mode.id === 'regime') { const r = metrics.regime[owner]; return [REGIME_LABELS[r], REGIME_COLORS[r]]; }
+  if (mode.id === 'war') { const w = metrics.war[owner]; return [WAR_LABELS[w], WAR_COLORS[w]]; }
   const label = b.meta.religions[metrics.majorRel[owner]].label;
   return [label, RELIGION_COLORS[label] ?? '#a3a8ad'];
 }
