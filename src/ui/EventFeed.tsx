@@ -5,6 +5,9 @@ import { describeEvent } from '../engine/describe';
 import { formatDate } from '../engine/calendar';
 
 const KINDS: Record<string, string> = {
+  coup: 'Coups', coup_failed: 'Coups', revolution: 'Uprisings', regime_overthrown: 'Uprisings', government_collapse: 'Uprisings',
+  protests: 'Protests', democratization: 'Regime change', autocratization: 'Regime change', elections_restored: 'Regime change',
+  election_lost: 'Elections', election_won: 'Elections',
   oil_shock: 'Oil shocks', inflation_high: 'Inflation', inflation_tamed: 'Inflation',
   gdp_rank_up: 'Economic rankings', sovereign_default: 'Sovereign defaults', recession_start: 'Recessions', recession_end: 'Recoveries',
   pop_peak: 'Population peaks', pop_above: 'Population milestones', pop_below: 'Population milestones', debt_above: 'Debt thresholds',
@@ -14,7 +17,7 @@ interface Props { events: SimEvent[]; name: (c: number) => string; weight: (c: n
 
 export function EventFeed({ events, name, weight, onSelect }: Props) {
   const [minPop, setMinPop] = useState(20e6);
-  const [off, setOff] = useState<Set<string>>(new Set(['recession_end', 'debt_above']));
+  const [off, setOff] = useState<Set<string>>(new Set(['recession_end', 'debt_above', 'election_won']));
   const shown = useMemo(() => {
     const out: SimEvent[] = [];
     for (let i = events.length - 1; i >= 0 && out.length < 150; i--) {

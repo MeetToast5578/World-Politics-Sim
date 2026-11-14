@@ -29,6 +29,29 @@ export function describeEvent(e: SimEvent, name: (c: number) => string): string 
       return `${c} defaults on its public debt: interest payments reached ${pct(x.burden, 0)} of revenue with debt at ${pct(e.v!, 0)} of GDP. Debt is restructured and output contracts.`;
     case 'gdp_rank_up':
       return `${c} overtakes ${name(e.o!)} and becomes the world's #${e.v} economy at market exchange rates.`;
+    // politics: every sentence cites the state that produced the event
+    case 'election_won':
+      return `${c}: the incumbent wins re-election (approval ${pct(x.approval, 0)}, democracy index ${x.demo.toFixed(2)}).`;
+    case 'election_lost':
+      return `${c}: the government loses the election (approval ${pct(x.approval, 0)}, misery index ${x.misery.toFixed(1)}, growth ${pct(x.growth)}); a new government takes office.`;
+    case 'coup':
+      return `${c}: military coup succeeds (unrest ${pct(x.unrest, 0)}, legitimacy ${pct(x.legit, 0)}, democracy index ${x.demo.toFixed(2)}, annual coup risk was ${pct(x.hazard, 0)}).`;
+    case 'coup_failed':
+      return `${c}: coup attempt fails (unrest ${pct(x.unrest, 0)}, legitimacy ${pct(x.legit, 0)}).`;
+    case 'protests':
+      return `${c}: mass protests (unrest ${pct(x.unrest, 0)}; approval ${pct(x.approval, 0)}, misery index ${x.misery.toFixed(1)}, religious polarisation ${x.polar.toFixed(2)}).`;
+    case 'government_collapse':
+      return `${c}: the government falls amid mass unrest (unrest ${pct(x.unrest, 0)}, legitimacy ${pct(x.legit, 0)}); early elections are called.`;
+    case 'revolution':
+      return `${c}: popular uprising topples the regime and opens a democratic transition (unrest ${pct(x.unrest, 0)}, legitimacy ${pct(x.legit, 0)}, religious polarisation ${x.polar.toFixed(2)}).`;
+    case 'regime_overthrown':
+      return `${c}: uprising overthrows the government; a new authoritarian leadership takes power (unrest ${pct(x.unrest, 0)}, legitimacy ${pct(x.legit, 0)}).`;
+    case 'democratization':
+      return `${c} becomes an electoral democracy (democracy index ${e.v!.toFixed(2)}, legitimacy ${pct(x.legit, 0)}).`;
+    case 'autocratization':
+      return `${c} slides into electoral autocracy (democracy index ${e.v!.toFixed(2)}; incumbent approval ${pct(x.approval, 0)}).`;
+    case 'elections_restored':
+      return `${c}: the ruling authorities restore elections (democracy index ${e.v!.toFixed(2)}).`;
     default:
       return `${c}: ${e.k}`;
   }

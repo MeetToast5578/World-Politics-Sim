@@ -1,6 +1,6 @@
 // Shape of public/data/baseline.json (produced by scripts/build-data.mjs).
 
-export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED';
+export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB';
 
 /** A sourced observation: value, reference year, source. */
 export interface Obs { v: number; y: number; s: SourceId }
@@ -18,6 +18,7 @@ export interface BaselineCountry {
   regions: string[];
   fields: Partial<Record<string, Obs>>;
   government: { form: GovForm; basis: string; raw: string | null; s: SourceId | null };
+  religion: { s: SourceId; y: number; reliability?: string; proxy?: string; shares: number[] } | null;
   geo: { areaKm2: number; coastKm: number; coreCoastKm: number; landlocked: boolean; centroid: [number, number]; s: SourceId };
 }
 
@@ -49,6 +50,10 @@ export interface Baseline {
     indicators: Record<string, { source: string; code: string; agg: string }>;
     curves: Record<'tfr' | 'lifeExpF' | 'lifeExpM' | 'u5mrF' | 'u5mrM' | 'agriShare' | 'industryShare' | 'investment', Curve>;
     coverage: Record<string, Record<string, number>>;
+    baseRates: { window: string; regimeChangePerCountryYear: number; democracyBoundaryPerCountryYear: number; indexRuleCrossingsPerCountryYear: number; demoAbsChangeMedian: number; demoAbsChangeP90: number };
+    religions: { label: string; family: string }[];
+    /** Logistic secularisation ds/dt = r·s·(1 − s/K) fitted on the World Religion Project panel. */
+    secularisation: { r: number; K: number; n: number; window: string };
   };
   countries: BaselineCountry[];
   regions: BaselineRegion[];

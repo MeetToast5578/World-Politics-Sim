@@ -5,6 +5,7 @@ import { Simulation } from '../engine/sim';
 import { saveWorld, loadWorld } from '../engine/save';
 import { FIELDS, HIST_FIELDS, AGES, cohortIndex, totalPop } from '../engine/state';
 import { addMonths } from '../engine/calendar';
+import { coupHazard } from '../engine/systems/politics';
 import type { ToWorker, Frame, FromWorker } from './protocol';
 
 let baseline: Baseline;
@@ -21,8 +22,10 @@ const TICK_MS = 50;
 const post = (m: FromWorker) => (self as unknown as Worker).postMessage(m);
 
 function metrics(): Record<string, number[]> {
-  const { f, n, history } = sim.st;
-  const out: Record<string, number[]> = { pop: [], gdp: [], gdpPc: [], growth: [], tfr: [], lifeExp: [], old: [], debt: [], mil: [], milexShare: [], effectiveness: [], voice: [], unemp: [], inflation: [], trade: [], agri: [], oilExp: [] };
+  const st = sim.st, { f, n, history } = st;
+  const out: Record<string, number[]> = { pop: [], gdp: [], gdpPc: [], growth: [], tfr: [], lifeExp: [], old: [], debt: [], mil: [], milexShare: [], effectiveness: [], voice: [], unemp: [], inflation: [], trade: [], agri: [], oilExp: [],
+    demo: [], regime: [], approval: [], unrest: [], coupRisk: [], relPolar: [], nonrel: [], majorRel: [] };
+  const R = st.nRel;
   const H = history.years.length, g = history.data.gdp;
   for (let c = 0; c < n; c++) {
     const P = totalPop(sim.st, c);
@@ -44,6 +47,11 @@ function metrics(): Record<string, number[]> {
     out.trade.push(f.tradeShare[c]);
     out.agri.push(f.agriShare[c]);
     out.oilExp.push(f.oilExp[c]);
+    out.demo.push(f.demo[c]); out.regime.push(f.regime[c]); out.approval.push(f.approval[c]); out.unrest.push(f.unrest[c]);
+    out.coupRisk.push(coupHazard(st, sim.params, c));
+    out.relPolar.push(f.relPolar[c]); out.nonrel.push(st.religion[c * R + R - 1]);
+    let best = 0; for (let r = 1; r < R; r++) if (st.religion[c * R + r] > st.religion[c * R + best]) best = r;
+    out.majorRel.push(best);
   }
   return out;
 }
@@ -71,7 +79,8 @@ function frame(): Frame {
     const series: Record<string, number[]> = {};
     for (const k of HIST_FIELDS) series[k] = Array.from({ length: H }, (_, y) => st.history.data[k][y * st.n + c]);
     const cohort = (sex: number) => Array.from(st.cohorts.subarray(cohortIndex(c, sex), cohortIndex(c, sex) + AGES));
-    fr.detail = { c, fields: Object.fromEntries(FIELDS.map((k) => [k, st.f[k][c]])), history: { years: st.history.years, series }, pyramid: { f: cohort(0), m: cohort(1) } };
+    fr.detail = { c, fields: Object.fromEntries(FIELDS.map((k) => [k, st.f[k][c]])), history: { years: st.history.years, series }, pyramid: { f: cohort(0), m: cohort(1) },
+      religion: Array.from(st.religion.subarray(c * st.nRel, (c + 1) * st.nRel)) };
   }
   return fr;
 }

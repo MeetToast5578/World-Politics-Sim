@@ -7,7 +7,7 @@ import { formatDate } from '../engine/calendar';
 import { LineChart } from './LineChart';
 import { Pyramid } from './Pyramid';
 import { fmtNum, fmtPct, fmtUsd } from './format';
-import { GOV_LABELS } from './mapModes';
+import { GOV_LABELS, REGIME_LABELS } from './mapModes';
 
 interface Props {
   baseline: Baseline;
@@ -16,6 +16,8 @@ interface Props {
   name: (c: number) => string;
   onClose: () => void;
 }
+
+const baselineIndex = (b: Baseline, id: string) => b.countries.findIndex((c) => c.id === id);
 
 const STATUS: Record<string, string> = {
   recognized: 'UN member / widely recognised', partially_recognized: 'Partially recognised', unrecognized: 'Unrecognised (de facto state)', non_self_governing: 'Non-self-governing territory',
@@ -71,6 +73,27 @@ export function CountryPanel({ baseline: b, detail, events, name, onClose }: Pro
         <div className="kv small"><span>Basis</span><span>{bc.government.basis}{bc.government.raw ? ` — Wikidata: “${bc.government.raw}”` : ''}</span></div>
         <div className="kv"><span>Territory</span><span>{fmtNum(bc.geo.areaKm2)} km² · {bc.geo.landlocked ? 'landlocked' : `${fmtNum(bc.geo.coreCoastKm)} km coastline`} · {bc.regions.length} region{bc.regions.length > 1 ? 's' : ''}</span></div>
         <div className="kv"><span>Governance (WGI)</span><span>effectiveness {f.wgiEffectiveness.toFixed(2)} · voice {f.wgiVoice.toFixed(2)} · rule of law {f.wgiRuleOfLaw.toFixed(2)}</span></div>
+      </section>
+
+      <section>
+        <h3>Politics</h3>
+        <div className="kv"><span>Regime (simulated)</span><b>{REGIME_LABELS[f.regime]}</b></div>
+        <div className="kv"><span>Democracy index</span><span>{f.demo.toFixed(2)} (baseline {f.demo0.toFixed(2)}, <Src o={bf.vdemEdi} b={b} />)</span></div>
+        <div className="kv"><span>Approval / legitimacy</span><span>{fmtPct(f.approval, 0)} / {fmtPct(f.legit, 0)}</span></div>
+        <div className="kv"><span>Unrest</span><span>{fmtPct(f.unrest, 0)} (baseline {fmtPct(f.unrest0, 0)})</span></div>
+        <div className="kv"><span>Government</span><span>{f.govYears.toFixed(1)} years in office · {f.govTerms} re-election{f.govTerms === 1 ? '' : 's'} · orientation {f.ideology > 0.2 ? 'right' : f.ideology < -0.2 ? 'left' : 'centre'} <span className="src imputed" title="No open dataset of governing-party orientation covers all countries; drawn at start.">drawn</span></span></div>
+        <div className="kv"><span>Next election</span><span>{f.nextElection >= 0 && f.regime >= 1 ? formatDate(f.nextElection) : 'none scheduled'}</span></div>
+      </section>
+
+      <section>
+        <h3>Religion</h3>
+        <div className="kv small"><span>Source</span><span>{bc.religion ? `${bc.religion.s === 'PROXY' && bc.religion.proxy ? `proxy: ${name(baselineIndex(b, bc.religion.proxy))}` : bc.religion.s} ${bc.religion.y}${bc.religion.reliability ? ` · reliability ${bc.religion.reliability}` : ''}` : 'no data'} · simulated since then</span></div>
+        <div className="kv"><span>Fractionalisation / polarisation</span><span>{f.relFrac.toFixed(2)} / {f.relPolar.toFixed(2)}</span></div>
+        <ul className="bars">
+          {detail.religion.map((s, i) => [s, i] as const).filter(([s]) => s >= 0.01).sort((x, y) => y[0] - x[0]).map(([s, i]) => (
+            <li key={i}><span>{b.meta.religions[i].label} <em>{b.meta.religions[i].family !== b.meta.religions[i].label ? b.meta.religions[i].family : ''}</em></span><i style={{ width: `${Math.max(1, s * 100)}%` }} /><b>{fmtPct(s, 1)}</b></li>
+          ))}
+        </ul>
       </section>
 
       <section className="charts">

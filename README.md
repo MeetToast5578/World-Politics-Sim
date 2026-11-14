@@ -1,20 +1,24 @@
 # WORLD — a geopolitical simulation you observe
 
 An autonomous world simulator: start from a documented 2023 baseline of the real world and watch it evolve on its own.
-History is meant to emerge from interacting models, not from scripts. This repository currently contains **Phases 1 and 2**:
-the data pipeline, a deterministic simulation engine with demographic and economic models, a 2000→2023 backtest,
-and an observer UI.
+History is meant to emerge from interacting models, not from scripts. This repository currently contains **Phases 1, 2 and the first part of 3**:
+the data pipeline, a deterministic simulation engine with demographic, economic, religious and political models,
+a 2000→2023 backtest, and an observer UI.
 
 **What runs today:** 200 political entities on a 1:50m world map; cohort-component demography by single year of age
 and sex (life tables solved per country, conserved migration, demographic transition); a quarterly economy (growth
 with technology diffusion through trade, business cycles with a world shock and trade transmission, a world oil price,
-inflation, sector shares, public debt with fiscal reaction and sovereign default, military capital); an event
+inflation, sector shares, public debt with fiscal reaction and sovereign default, military capital); religion by
+31 denominations and sects (World Religion Project) with secularisation and religious polarisation; domestic politics
+(V-Dem democracy and regime types, approval, legitimacy, unrest, elections, coups, uprisings, democratisation and
+autocratisation, calibrated to observed base rates); an event
 chronicle that records the causes of each event; pause/play/speed/step, save/load, rewind and branching timelines;
-19 map modes and a per-country inspector (population pyramid, every model variable next to its sourced baseline).
+27 map modes and a per-country inspector (population pyramid, religious composition, politics, every model variable
+next to its sourced baseline).
 `docs/BACKTEST.md` reports how well the model reproduces 2000→2023 from 2000 data.
 
-**What does not exist yet:** politics, elections, diplomacy, alliances, wars and territorial change, technology,
-environment, ideology. Government form and governance scores are static baseline data. See
+**What does not exist yet:** explicit political actors and parties, diplomacy, alliances, wars and territorial change,
+technology, environment, ideology. Constitutional form and WGI governance scores are static baseline data. See
 [docs/DESIGN.md](docs/DESIGN.md) for the architecture, the models of every subsystem (implemented and planned), the
 roadmap and the main uncertainties.
 
@@ -69,4 +73,5 @@ docs/                    design document and data sources
 * Same baseline + parameters + seed ⇒ bit-identical history (tested), including after save/load, rewind and branching.
 * Events are generated from state and store the values that caused them; the news text is rendered from those values.
 
-Data: Natural Earth (public domain), World Bank (CC BY 4.0), IMF DataMapper (attribution), Wikidata (CC0).
+Data: Natural Earth (public domain), World Bank (CC BY 4.0), IMF DataMapper (attribution), Wikidata (CC0),
+V-Dem via Our World in Data (CC BY-SA 4.0), World Religion Project via Correlates of War (research use with citation).

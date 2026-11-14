@@ -89,6 +89,51 @@ export const DEFAULT_PARAMS = {
   /** Fiscal reaction: primary balance responds by this much per unit debt/GDP above baseline (Bohn 1998 ~0.03-0.05). */
   bohn: 0.04,
 
+  // --- religion ---
+  /** Secularisation speed relative to the rate fitted on the WRP panel (1 = as observed; scenario parameter). */
+  religion: { rateScale: 1 },
+
+  // --- politics (systems/politics.ts) ---
+  politics: {
+    termYears: 4,          // years between elections (typical 4-5; one value for all electoral regimes, assumption)
+    approvalYears: 0.5,    // approval adjusts to conditions within months
+    approvalNoise: 0.03,   // quarterly news/scandal shocks to approval
+    voteGrowth: 1.5,       // approval per unit growth surprise (1 pp growth ≈ 1.5 pp approval; economic-voting literature)
+    voteMisery: 0.01,      // approval per misery-index point (unemployment + compressed inflation)
+    fatigue: 0.015,        // approval lost per year in office after two years ("cost of ruling")
+    perfYears: 8, legitYears: 4,
+    unrestYears: 0.5, unrestNoise: 0.02,
+    /** Unrest log-odds per unit change from baseline. Signs follow the conflict literature (misery, legitimacy,
+     *  youth bulges: Urdal 2006; religious polarisation: Montalvo & Reynal-Querol 2005); magnitudes are assumptions. */
+    unrestW: { misery: 0.06, approval: 3, legitimacy: 3, polarisation: 4, youth: 8 },
+    instabilityCost: 0.02, // annual output loss per unit of unrest above baseline (Aisen & Veiga 2013 order of magnitude)
+    ideologyFiscal: 0.1,   // revenue/GDP moves ±10% of baseline with governing orientation (partisan theory; assumption)
+    policyYears: 4,
+    diffusion: 0.03,       // per year, pull of democracy toward partners' average (Gleditsch & Ward 2006; assumption)
+    demoNoise: 0.005,      // yearly s.d. of democracy drift (median |change| ≈ 0.004 in V-Dem 2001-2023)
+    /** Episodes: probability per year and s.d. of a jump in the democracy index, plus a push in the direction of
+     *  legitimacy change. Set so ~10% of country-years change by more than 0.034 (V-Dem 2001-2023 90th percentile). */
+    episode: { perYear: 0.18, size: 0.06, legitimacy: 0.1 },
+    election: { approval: 6, autocracy: 4, terms: 0.3 },
+    /** Coups: world attempts per year at baseline (Powell & Thyne data: roughly 2-5 a year since 2000), log-hazard
+     *  weights (signs from the coup literature: autocracy, unrest, coup traps, recessions, low legitimacy, and log
+     *  income — coups are rare in rich countries, Londregan & Poole 1990), base
+     *  success rate ≈ 50% (Powell & Thyne 2011), output loss on success. */
+    coup: { attemptsPerYear: 3, maxPerYear: 0.35, autocracy: 3, unrest: 2, memory: 0.5, income: 0.8, recession: 0.8, legitimacy: 2, success: 0.5, outputLoss: 0.02, memoryYears: 10, demoFactor: 0.6 },
+    protestThreshold: 0.55,
+    /** Uprising hazard per year at maximum unrest (assumption), polarisation multiplier, share ending in democracy. */
+    uprising: { rate: 0.25, polarisation: 1.5, democraticShare: 0.3, outputLoss: 0.03 },
+    /** Democracy erosion per year by a popular incumbent: × (approval − 0.5) × (0.75 − demo) × years in office (≤ 8).
+     *  Mechanism from the autocratisation literature (Lührmann & Lindberg 2019); magnitude is an assumption. */
+    aggrandisement: 0.12,
+    /** Democracy regained when an incumbent loses an election in a not-fully-liberal regime (assumption). */
+    uTurn: 0.03,
+    /** Pull per year of the democracy index toward the country's baseline level (institutional persistence; 1/30). */
+    persistence: 0.033,
+    /** Regime categories from the democracy index, with a narrow hysteresis band around V-Dem's ~0.5 boundary. */
+    thresholds: { democratise: 0.5, autocratise: 0.46, liberal: 0.75, electoral: 0.3 },
+  },
+
   // --- military ---
   /** Annual depreciation of the military capital stock (equipment, training). Assumption. */
   milDepreciation: 0.08,

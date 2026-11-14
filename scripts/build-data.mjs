@@ -35,6 +35,34 @@ const SOURCES = {
   NE_EST: { name: 'Natural Earth POP_EST / GDP_MD attribute (fallback)', url: 'https://www.naturalearthdata.com/', license: 'Public domain' },
   IMPUTED: { name: 'Imputed: median of countries in the same World Bank region', url: '', license: 'Model assumption' },
   DERIVED: { name: 'Derived from geometry (Natural Earth 1:50m)', url: '', license: 'Public domain' },
+  VDEM: { name: 'V-Dem v14 via Our World in Data: Electoral Democracy Index, Regimes of the World', url: 'https://ourworldindata.org/democracy', license: 'CC BY-SA 4.0 (V-Dem); derived fields of baseline.json inherit share-alike' },
+  WRP: { name: 'World Religion Project, national data (Maoz & Henderson 2013), via Correlates of War', url: 'https://correlatesofwar.org/data-sets/world-religion-data/', license: 'Free for research use with citation (COW terms)' },
+  PROXY: { name: 'Proxy: composition of a named related state (documented in DATA_SOURCES.md)', url: '', license: 'Model assumption' },
+  CIA_WFB: { name: 'CIA World Factbook (South Sudan religion shares)', url: 'https://www.cia.gov/the-world-factbook/', license: 'Public domain' },
+};
+
+// Religion categories of the World Religion Project, in model order: [WRP pct column, label, family].
+const RELIGIONS = [
+  ['chrstcatpct', 'Catholic', 'Christianity'], ['chrstprotpct', 'Protestant', 'Christianity'], ['chrstorthpct', 'Orthodox Christian', 'Christianity'],
+  ['chrstangpct', 'Anglican', 'Christianity'], ['chrstothrpct', 'Other Christian', 'Christianity'],
+  ['islmsunpct', 'Sunni', 'Islam'], ['islmshipct', 'Shia', 'Islam'], ['islmibdpct', 'Ibadi', 'Islam'], ['islmalwpct', 'Alawite', 'Islam'],
+  ['islmahmpct', 'Ahmadiyya', 'Islam'], ['islmnatpct', 'Nation of Islam', 'Islam'], ['islmothrpct', 'Other Muslim', 'Islam'],
+  ['judorthpct', 'Orthodox Jewish', 'Judaism'], ['judconspct', 'Conservative Jewish', 'Judaism'], ['judrefpct', 'Reform Jewish', 'Judaism'], ['judothrpct', 'Other Jewish', 'Judaism'],
+  ['budmahpct', 'Mahayana', 'Buddhism'], ['budthrpct', 'Theravada', 'Buddhism'], ['budothrpct', 'Other Buddhist', 'Buddhism'],
+  ['hindgenpct', 'Hindu', 'Hinduism'], ['sikhgenpct', 'Sikh', 'Sikhism'], ['jaingenpct', 'Jain', 'Jainism'], ['shntgenpct', 'Shinto', 'Shinto'],
+  ['taogenpct', 'Taoist', 'Taoism'], ['confgenpct', 'Confucian', 'Confucianism'], ['bahgenpct', "Baha'i", "Baha'i"], ['zorogenpct', 'Zoroastrian', 'Zoroastrianism'],
+  ['syncgenpct', 'Syncretic', 'Syncretic'], ['anmgenpct', 'Animist / folk', 'Folk religion'], ['othrgenpct', 'Other religion', 'Other'], ['nonreligpct', 'Non-religious', 'None'],
+];
+const FAMILY_TOTAL = { Christianity: 'chrstgenpct', Islam: 'islmgenpct', Judaism: 'judgenpct', Buddhism: 'budgenpct' };
+// COW abbreviations whose country name does not match ours (2010 states); others match by name.
+const COW_FIX = { BHM: 'BHS', SLU: 'LCA', SVG: 'VCT', AAB: 'ATG', SKN: 'KNA', CZR: 'CZE', MAC: 'MKD', YUG: 'SRB', CAP: 'CPV', STP: 'STP', CON: 'COG', TAZ: 'TZA', SWA: 'SWZ' };
+// Entities absent from WRP: proxy state (documented) or a cited source.
+const RELIGION_PROXY = { SOL: 'SOM', CYN: 'TUR', PSE: 'JOR', ESH: 'MAR' };
+// South Sudan (independent 2011): CIA World Factbook 2020 est. Christian 60.5%, folk 32.9%, Muslim 6.2%, other 0.4%;
+// denominations within Christianity and Islam are not given, so they go to 'Other Christian' / 'Other Muslim'.
+const RELIGION_FIXED = {
+  SSD: { s: 'CIA_WFB', y: 2020, shares: { chrstothrpct: 0.605, anmgenpct: 0.329, islmothrpct: 0.062, othrgenpct: 0.004 } },
+  VAT: { s: 'PROXY', y: 2010, shares: { chrstcatpct: 1 } }, // the Holy See: Catholic by definition
 };
 
 // field -> [source, indicator code, aggregation]  ('sum' for stocks/counts, 'wavg' pop-weighted, 'gavg' GDP-weighted)
@@ -95,6 +123,88 @@ const IMF = {
 // gdpReal is only a backtest target.
 const NO_IMPUTE = new Set(['armedForces', 'netMigration', 'milexShare', 'oilRents', 'gasRents', 'coalRents', 'mineralRents', 'gdpReal']);
 
+// --- V-Dem via Our World in Data (ISO codes; a few OWID-specific codes) ----------------
+const OWID_CODE = { OWID_KOS: 'XKX', OWID_SML: 'SOL' };
+const ROW = { 'Closed autocracy': 0, 'Electoral autocracy': 1, 'Electoral democracy': 2, 'Liberal democracy': 3 };
+async function vdem() {
+  const parse = (txt) => txt.trim().split('\n').slice(1).map((l) => l.split(','));
+  const edi = parse(await cached('owid_edi.csv', 'https://ourworldindata.org/grapher/electoral-democracy-index.csv?v=1&csvType=full&useColumnShortNames=true'));
+  const row = parse(await cached('owid_row.csv', 'https://ourworldindata.org/grapher/political-regime.csv?v=1&csvType=full&useColumnShortNames=true'));
+  const code = (r) => OWID_CODE[r[1]] || r[1] || (r[0] === 'Palestine/West Bank' ? 'PSE' : null);
+  const latest = (rows, val) => {
+    const out = {};
+    for (const r of rows) {
+      const c = code(r), y = +r[2], v = val(r[3]);
+      if (!c || y > REF_YEAR || y < MIN_YEAR || v == null || Number.isNaN(v)) continue;
+      if (!out[c] || y > out[c].y) out[c] = { v, y };
+    }
+    return out;
+  };
+  // base rates over the 23 years before the reference year: Regimes-of-the-World category changes per country-year,
+  // and the median absolute yearly change of the democracy index
+  const series = {};
+  for (const r of row) { const c = code(r), y = +r[2]; if (c && y >= REF_YEAR - 23 && y <= REF_YEAR) (series[c] ??= {})[y] = ROW[r[3]]; }
+  let changes = 0, cy = 0, cross = 0;
+  for (const s of Object.values(series)) for (let y = REF_YEAR - 22; y <= REF_YEAR; y++) if (s[y] != null && s[y - 1] != null) {
+    cy++; if (s[y] !== s[y - 1]) changes++; if ((s[y] >= 2) !== (s[y - 1] >= 2)) cross++;
+  }
+  const ediS = {};
+  for (const r of edi) { const c = code(r), y = +r[2]; if (c && y >= REF_YEAR - 23 && y <= REF_YEAR) (ediS[c] ??= {})[y] = +r[3]; }
+  const dif = [];
+  for (const s of Object.values(ediS)) for (let y = REF_YEAR - 22; y <= REF_YEAR; y++) if (s[y] != null && s[y - 1] != null) dif.push(Math.abs(s[y] - s[y - 1]));
+  dif.sort((a, b) => a - b);
+  // the same democracy/autocracy rule the model uses (index crossing 0.50 upward, 0.46 downward) applied to real data
+  let ruleCross = 0, ruleCy = 0;
+  for (const s of Object.values(ediS)) {
+    let dem = null;
+    for (let y = REF_YEAR - 23; y <= REF_YEAR; y++) {
+      if (s[y] == null) continue;
+      if (dem === null) { dem = s[y] >= 0.48; continue; }
+      ruleCy++; const nd = dem ? s[y] >= 0.46 : s[y] > 0.5; if (nd !== dem) ruleCross++; dem = nd;
+    }
+  }
+  return {
+    edi: latest(edi, Number), row: latest(row, (s) => ROW[s]),
+    baseRates: { window: `${REF_YEAR - 22}-${REF_YEAR}`, regimeChangePerCountryYear: +(changes / cy).toFixed(4), democracyBoundaryPerCountryYear: +(cross / cy).toFixed(4), indexRuleCrossingsPerCountryYear: +(ruleCross / ruleCy).toFixed(4), demoAbsChangeMedian: +dif[dif.length >> 1].toFixed(4), demoAbsChangeP90: +dif[Math.floor(dif.length * 0.9)].toFixed(4) },
+  };
+}
+
+// --- World Religion Project (COW codes) ----------------------------------------------
+async function religion(countries) {
+  const lines = (await cached('WRP_national.csv', 'https://correlatesofwar.org/wp-content/uploads/WRP_national.csv')).trim().split('\n');
+  const head = lines[0].split(','), col = Object.fromEntries(head.map((h, i) => [h, i]));
+  const cowNames = {};
+  for (const l of (await cached('COW-country-codes.csv', 'https://correlatesofwar.org/wp-content/uploads/COW-country-codes.csv')).split(/\r?\n|\r/).slice(1)) {
+    const [abb, , name] = l.split(','); if (abb) cowNames[abb] = name;
+  }
+  const norm = (s) => s.toLowerCase().replace(/[^a-z]/g, '');
+  const byName = new Map(countries.map((c) => [norm(c.name), c.id]));
+  const year = [...new Set(lines.slice(1).map((l) => +l.split(',')[0]))].filter((y) => y <= REF_YEAR).sort((a, b) => b - a)[0];
+  const out = {};
+  // rows of the reference WRP year first; states that did not exist yet (e.g. Montenegro, Timor-Leste in 2000) take
+  // their own earliest later observation, flagged by its year
+  const rows = lines.slice(1).map((l) => l.split(',')).filter((r) => +r[0] >= year)
+    .sort((a, b) => (+a[0] === year ? 0 : +a[0]) - (+b[0] === year ? 0 : +b[0]));
+  for (const r of rows) {
+    const id = COW_FIX[r[2]] || byName.get(norm(cowNames[r[2]] || '')) || (countries.some((c) => c.id === r[2]) ? r[2] : null);
+    if (!id) { if (+r[0] === year) console.warn('WRP: unmatched', r[2], cowNames[r[2]]); continue; }
+    if (out[id]) continue;
+    const sh = RELIGIONS.map(([k]) => +r[col[k]] || 0);
+    // a family total above the sum of its denominations goes to that family's "other" category
+    for (const [fam, tot] of Object.entries(FAMILY_TOTAL)) {
+      const idx = RELIGIONS.map((x, i) => (x[2] === fam ? i : -1)).filter((i) => i >= 0);
+      const gap = (+r[col[tot]] || 0) - idx.reduce((s, i) => s + sh[i], 0);
+      if (gap > 0) sh[idx[idx.length - 1]] += gap;
+    }
+    const tot = sh.reduce((a, b) => a + b, 0);
+    out[id] = { s: 'WRP', y: +r[0], reliability: r[col.reliabilevel], shares: sh.map((x) => +(x / tot).toFixed(5)) };
+  }
+  for (const [id, f] of Object.entries(RELIGION_FIXED)) out[id] = { s: f.s, y: f.y, shares: RELIGIONS.map(([k]) => f.shares[k] || 0) };
+  for (const [id, src] of Object.entries(RELIGION_PROXY)) if (out[src]) out[id] = { ...out[src], s: 'PROXY', proxy: src };
+  return { year, byId: out };
+}
+
+const cachedSync = (name) => (fs.existsSync(path.join(CACHE, name)) ? fs.readFileSync(path.join(CACHE, name), 'utf8') : null);
 async function cached(name, url, opts = {}) {
   const f = path.join(CACHE, name);
   if (fs.existsSync(f)) return fs.readFileSync(f, 'utf8');
@@ -299,6 +409,8 @@ async function main() {
     process.stdout.write('.');
   }
   ind.growthSd = await growthVolatility();
+  const vd = await vdem();
+  ind.vdemEdi = vd.edi; ind.regimeRow = vd.row;
   const gov = await wikidataGov([...new Set(regions.map((r) => r.wikidata).filter(Boolean))]);
   console.log();
 
@@ -315,15 +427,20 @@ async function main() {
     };
   });
 
-  const allFields = { ...WDI, ...IMF, growthSd: ['WDI', `NY.GDP.MKTP.KD.ZG (sd ${VOL_FROM}-${VOL_TO})`, 'gavg'] };
+  const allFields = {
+    ...WDI, ...IMF, growthSd: ['WDI', `NY.GDP.MKTP.KD.ZG (sd ${VOL_FROM}-${VOL_TO})`, 'gavg'],
+    // political fields come from the core territory only (China's regime is not averaged with Hong Kong's)
+    vdemEdi: ['VDEM', 'electdem_vdem (v2x_polyarchy)', 'core'], regimeRow: ['VDEM', 'regime_row_owid (v2x_regime)', 'core'],
+  };
   for (const c of countries) {
     // weights for averages: data population / GDP of each member (or NE estimate)
     const w = (m, key) => ind[key][m.dataCode]?.v ?? (key === 'pop' ? m.nePop : m.neGdpMd * 1e6) ?? 0;
     for (const [field, [src, , agg]] of Object.entries(allFields)) {
-      const obs = c.members.map((m) => ({ m, o: ind[field][m.dataCode] })).filter((x) => x.o);
+      const obs = (agg === 'core' ? c.members.slice(0, 1) : c.members).map((m) => ({ m, o: ind[field][m.dataCode] })).filter((x) => x.o);
       if (!obs.length) continue;
       let v;
       if (agg === 'sum') v = obs.reduce((s, x) => s + x.o.v, 0);
+      else if (agg === 'core') v = obs[0].o.v;
       else {
         const key = agg === 'wavg' ? 'pop' : 'gdp';
         const tw = obs.reduce((s, x) => s + w(x.m, key), 0);
@@ -421,6 +538,29 @@ async function main() {
     curves[k].driftFrom = `within-country change ${EARLY}-${REF_YEAR} not explained by income growth; median by income tercile (n=${pts.length})`;
   }
 
+  // Religion: composition by denomination, and a secularisation law fitted on the WRP panel: for every state with
+  // data at both ends of the 15 years before the WRP year, regress the yearly change of the non-religious share s on
+  // [s, s²] without intercept (logistic growth ds/dt = r·s·(1 − s/K) ⇔ a·s + b·s², r = a, K = −a/b).
+  const rel = await religion(countries);
+  for (const c of countries) c.religion = rel.byId[c.id] ?? null;
+  const secularisation = (() => {
+    const L = (cachedSync('WRP_national.csv') || '').trim().split('\n');
+    const head = L[0].split(','), iNone = head.indexOf('nonreligpct'), y1 = rel.year, y0 = rel.year - 15;
+    const by = {};
+    for (const l of L.slice(1)) { const r = l.split(','); if (+r[0] === y0 || +r[0] === y1) (by[r[2]] ??= {})[+r[0]] = +r[iNone]; }
+    let sxx = 0, sxy = 0, syy = 0, sx = 0, sy = 0, n = 0;
+    for (const v of Object.values(by)) {
+      if (v[y0] == null || v[y1] == null || v[y0] > 0.5) continue; // exclude regime-driven collapses of irreligion
+      const s0 = v[y0], d = (v[y1] - s0) / 15, x1 = s0, x2 = s0 * s0;
+      sxx += x1 * x1; sxy += x1 * x2; syy += x2 * x2; sx += x1 * d; sy += x2 * d; n++;
+    }
+    const det = sxx * syy - sxy * sxy, a = (sx * syy - sy * sxy) / det, bq = (sy * sxx - sx * sxy) / det;
+    return { r: +a.toFixed(5), K: +(-a / bq).toFixed(4), n, window: `${y0}-${y1}` };
+  })();
+  console.log('secularisation', JSON.stringify(secularisation));
+  const relMissing = countries.filter((c) => !c.religion).map((c) => c.id);
+  if (relMissing.length) console.warn('religion missing for', relMissing.join(' '));
+
   const coverage = {};
   for (const field of Object.keys(allFields)) {
     const by = {};
@@ -433,7 +573,8 @@ async function main() {
       referenceYear: REF_YEAR, minYear: MIN_YEAR, startDate: `${REF_YEAR + 1}-01-01`,
       generated: new Date().toISOString().slice(0, 10), sources: SOURCES,
       indicators: Object.fromEntries(Object.entries(allFields).map(([k, [s, code, agg]]) => [k, { source: s, code, agg }])),
-      curves, coverage,
+      curves, coverage, baseRates: vd.baseRates, secularisation,
+      religions: RELIGIONS.map(([, label, family]) => ({ label, family })),
     },
     countries: countries.map(({ members, ...c }) => c),
     regions: regions.map(({ idx, nePop, nePopYear, neGdpMd, neGdpYear, ...r }) => r),

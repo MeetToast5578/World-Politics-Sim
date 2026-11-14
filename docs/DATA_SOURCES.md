@@ -83,6 +83,28 @@ Reference year: latest observation in 2015–2023 per country and field; the yea
 GDP values from years before 2023 are treated as 2023 USD without deflating — a known approximation affecting the few
 `NE_EST` entries (Eritrea 2011, North Korea 2016, Taiwan 2016, …).
 
+### Phase 3 additions: religion and political regimes
+
+| Field | Source | Notes |
+|---|---|---|
+| `religion.shares` (31 categories) | World Religion Project national data (Maoz & Henderson 2013), Correlates of War, `WRP_national.csv` | latest year ≤ reference year (2010; 2000 for the backtest baseline); a family total above the sum of its denominations goes to that family's "other" category; free for research with citation (COW terms) |
+| `vdemEdi` | V-Dem Electoral Democracy Index (v2x_polyarchy) via Our World in Data | core territory only; **CC BY-SA 4.0**, so the derived fields of `baseline.json` are share-alike |
+| `regimeRow` | V-Dem Regimes of the World (v2x_regime) via Our World in Data | 0 closed autocracy … 3 liberal democracy |
+| `meta.baseRates` | computed from the same V-Dem series, 23 years before the reference year | calibration targets (DESIGN.md §3.4) |
+| `meta.secularisation` | least-squares logistic fit on the WRP panel, 15 years before the WRP year | DESIGN.md §3.3 |
+
+* **COW → ISO crosswalk:** names matched against our country names; 13 codes fixed by hand (BHM→BHS, SLU→LCA,
+  SVG→VCT, AAB→ATG, SKN→KNA, CZR→CZE, MAC→MKD, YUG→SRB (Serbia in 2010), CAP→CPV, CON→COG, TAZ→TZA, SWA→SWZ, STP).
+* **Entities missing from WRP:** Somaliland ← Somalia, Northern Cyprus ← Turkey, Palestine ← Jordan, Western Sahara ←
+  Morocco (proxies, flagged `PROXY`); the Holy See = 100% Catholic; South Sudan from the CIA World Factbook (2020 est.:
+  Christian 60.5%, folk 32.9%, Muslim 6.2%, other 0.4%; denominations not given, so "other Christian"/"other Muslim").
+* States that did not exist in the WRP year take their own earliest later WRP observation (2000 baseline: Montenegro,
+  Kosovo from 2010, Timor-Leste from 2005). This is minor post-2000 information in the backtest baseline.
+* V-Dem has no data for Northern Cyprus, Western Sahara, the Holy See and most microstates (24 entities); their
+  democracy fields are regional medians, flagged `IMPUTED`. Palestine uses V-Dem's "Palestine/West Bank".
+* Known WRP coding choices that differ from other sources: Israel's Jewish population is coded mostly "Orthodox
+  Jewish"; Japan's Shinto and Buddhist shares follow WRP's single-affiliation split; China is 42% syncretic.
+
 ## Entity rules and overrides
 
 * One simulated country per Natural Earth sovereignty group (`SOV_A3`). Dependencies (e.g. Greenland, Puerto Rico,

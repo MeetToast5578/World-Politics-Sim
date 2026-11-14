@@ -64,6 +64,11 @@ h2 { margin: 0; font-size: 18px; } h3 { margin: 14px 0 6px; font-size: 12px; tex
 .chart { background: var(--panel2); border-radius: 6px; padding: 6px 8px; }
 .chart-head { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); } .chart-head b { color: var(--text); }
 .chart svg { width: 100%; height: 64px; display: block; }
+.bars { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; }
+.bars li { display: grid; grid-template-columns: 150px 1fr 48px; gap: 6px; align-items: center; padding: 1px 0; }
+.bars li em { color: var(--muted); font-style: normal; font-size: 10px; }
+.bars li i { display: block; height: 8px; background: var(--accent); border-radius: 2px; }
+.bars li b { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
 .male { color: var(--male); } .female { color: var(--female); }
 .chart-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
 .chart-empty { color: var(--muted); font-size: 11px; padding: 18px 0; text-align: center; }
