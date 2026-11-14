@@ -100,7 +100,7 @@ export function economyQuarterly(st: WorldState, p: Params, rng: Rng, oilRng: Rn
   for (let c = 0; c < n; c++) {
     const ps = trade.partners[c], lnA = Math.log(f.A[c]);
     let impW = 0, impLnA = 0;
-    for (let k = 0; k < ps.length; k++) { const w = trade.a[ps[k]] * f.gdp[ps[k]] * trade.dist[c][k]; impW += w; impLnA += w * Math.log(f.A[ps[k]]); } // w ∝ imports of c from j
+    for (let k = 0; k < ps.length; k++) { const w = trade.a[ps[k]] * f.gdp[ps[k]] * trade.dist[c][k] * trade.mult[c][k]; impW += w; impLnA += w * Math.log(f.A[ps[k]]); } // w ∝ imports of c from j
     const partnerGap = impW > 0 ? impLnA / impW - lnA : 0;
     const gap = Math.max(0, p.trade.frontierWeight * (lnAf - lnA) + (1 - p.trade.frontierWeight) * partnerGap);
     growthA[c] = p.frontierGrowth + p.catchUp * f.absorb[c] * gap;

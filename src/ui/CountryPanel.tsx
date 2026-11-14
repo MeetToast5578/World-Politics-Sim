@@ -18,6 +18,29 @@ interface Props {
 }
 
 const baselineIndex = (b: Baseline, id: string) => b.countries.findIndex((c) => c.id === id);
+const list = (cs: number[], name: (c: number) => string) => (cs.length ? `${cs.slice(0, 6).map(name).join(', ')}${cs.length > 6 ? ` +${cs.length - 6}` : ''}` : 'none');
+
+const DRIVER_LABELS: Record<string, string> = { foreignPolicy: 'UN voting gap', regime: 'regime gap', trade: 'trade', alliance: 'alliance', religion: 'religious similarity', grievance: 'grievance', sanctions: 'sanctions' };
+
+/** Relation rows with the decomposition of the trust target: the "why" behind each relationship. */
+function Relations({ rows, name }: { rows: CountryDetail['diplomacy']['relations']; name: (c: number) => string }) {
+  return (
+    <table className="stats rel">
+      <tbody>
+        {rows.map((r) => {
+          const parts = Object.entries(r.drivers).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, z) => Math.abs(z[1]) - Math.abs(a[1])).slice(0, 3);
+          return (
+            <tr key={r.c}>
+              <td>{name(r.c)}</td>
+              <td className={r.trust >= 0 ? 'pos' : 'neg'}>{r.trust.toFixed(2)}</td>
+              <td className="why">{parts.map(([k, v]) => `${DRIVER_LABELS[k]} ${v > 0 ? '+' : ''}${v.toFixed(2)}`).join(' · ')}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
 
 const STATUS: Record<string, string> = {
   recognized: 'UN member / widely recognised', partially_recognized: 'Partially recognised', unrecognized: 'Unrecognised (de facto state)', non_self_governing: 'Non-self-governing territory',
@@ -83,6 +106,18 @@ export function CountryPanel({ baseline: b, detail, events, name, onClose }: Pro
         <div className="kv"><span>Unrest</span><span>{fmtPct(f.unrest, 0)} (baseline {fmtPct(f.unrest0, 0)})</span></div>
         <div className="kv"><span>Government</span><span>{f.govYears.toFixed(1)} years in office · {f.govTerms} re-election{f.govTerms === 1 ? '' : 's'} · orientation {f.ideology > 0.2 ? 'right' : f.ideology < -0.2 ? 'left' : 'centre'} <span className="src imputed" title="No open dataset of governing-party orientation covers all countries; drawn at start.">drawn</span></span></div>
         <div className="kv"><span>Next election</span><span>{f.nextElection >= 0 && f.regime >= 1 ? formatDate(f.nextElection) : 'none scheduled'}</span></div>
+      </section>
+
+      <section>
+        <h3>Diplomacy</h3>
+        <div className="kv"><span>Defence treaties</span><span>{detail.diplomacy.treaties.length ? detail.diplomacy.treaties.map((t) => `${t.label} (${t.members})`).join(' · ') : 'none'}</span></div>
+        <div className="kv"><span>Sanctions on it</span><span>{f.unSanction > 0 ? 'UN Security Council; ' : ''}{list(detail.diplomacy.relations.filter((r) => r.sanctionsOn > 0).map((r) => r.c), name)}</span></div>
+        <div className="kv"><span>Sanctions it imposes</span><span>{list(detail.diplomacy.relations.filter((r) => r.sanctionsBy > 0).map((r) => r.c), name)}</span></div>
+        <div className="kv"><span>UN-voting position</span><span>{f.fp.toFixed(2)} (baseline {f.fp0.toFixed(2)}, <Src o={bf.unIdeal} b={b} />)</span></div>
+        <h4>Closest partners</h4>
+        <Relations rows={detail.diplomacy.relations.slice(0, 5)} name={name} />
+        <h4>Worst relations</h4>
+        <Relations rows={detail.diplomacy.relations.slice(-5).reverse()} name={name} />
       </section>
 
       <section>

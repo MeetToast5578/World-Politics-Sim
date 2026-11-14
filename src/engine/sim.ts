@@ -4,7 +4,8 @@
 //   1 Jan/Apr/Jul/Oct  : economy (quarterly: oil price, TFP, cycle, inflation, debt) -> politics (quarterly)
 //                        -> chronicle (quarterly)
 //   every 1 Jan        : demography (cohort-component step + transition) -> economy (yearly structure)
-//                        -> religion (secularisation) -> chronicle (yearly) -> history record
+//                        -> religion (secularisation) -> diplomacy (relations, crises, sanctions, alliances)
+//                        -> chronicle (yearly) -> history record
 // On 1 January the economy's quarter runs before demography, so both read the population of the year just ended.
 // Order within a boundary is fixed so each system reads a consistent state. Days between boundaries have no
 // scheduled work in Phase 1, so advancing jumps from boundary to boundary (cost is independent of day count).
@@ -18,9 +19,11 @@ import { initEconomy, initEconomyResiduals, economyQuarterly, economyYearly } fr
 import { buildTrade, type TradeNet } from './systems/trade';
 import { initReligion, religionYearly } from './systems/religion';
 import { initPolitics, politicsQuarterly } from './systems/politics';
+import { buildPairs, initDiplomacy, diplomacyYearly, applyTradeEffects, baselineSanction, type PairNet } from './systems/diplomacy';
+import { PAIR_FIELDS, type PairField } from './state';
 import { chronicleQuarterly, chronicleYearly } from './systems/chronicle';
 
-export const RNG_STREAMS = ['economy', 'commodity', 'politics'] as const;
+export const RNG_STREAMS = ['economy', 'commodity', 'politics', 'diplomacy'] as const;
 
 export interface SimConfig { seed: number; startDate?: string; params?: Partial<Params> }
 
@@ -31,6 +34,8 @@ export class Simulation {
   st: WorldState;
   /** Gravity trade network: derived from the baseline only, so it is rebuilt identically on load and replay. */
   readonly trade: TradeNet;
+  /** Diplomatic pair list: derived from the baseline only (like the trade network). */
+  readonly pairs: PairNet;
   private rngs: Record<string, Rng> = {};
 
   constructor(baseline: Baseline, cfg: SimConfig) {
@@ -42,10 +47,14 @@ export class Simulation {
     initEconomy(this.st, baseline, this.params);
     initTransitionResiduals(this.st, baseline);
     initEconomyResiduals(this.st, baseline);
-    this.trade = buildTrade(baseline, this.st.f.gdp, this.params);
+    const sanc = baselineSanction(baseline);
+    this.trade = buildTrade(baseline, this.st.f.gdp, this.params, (i, j) => 1 - this.params.diplomacy.sanctions.tradeCut * sanc(i, j));
+    this.pairs = buildPairs(baseline, this.trade, this.st.f.milCap, this.params);
+    this.st.pair = Object.fromEntries(PAIR_FIELDS.map((k) => [k, new Float64Array(this.pairs.i.length)])) as Record<PairField, Float64Array>;
     initReligion(this.st, baseline);
     this.reseed(this.st.seed);
     initPolitics(this.st, baseline, this.params, this.rngs.politics);
+    initDiplomacy(this.st, baseline, this.params, this.trade, this.pairs);
     chronicleYearly(this.st); // establishes milestone levels at t0 without emitting
     this.recordHistory();
   }
@@ -85,6 +94,7 @@ export class Simulation {
       demographyYearly(st, this.baseline, p);
       economyYearly(st, this.baseline, p, this.trade);
       religionYearly(st, this.baseline, p);
+      diplomacyYearly(st, this.baseline, p, this.rngs.diplomacy, this.trade, this.pairs);
       chronicleYearly(st);
       this.recordHistory();
     }
@@ -121,7 +131,7 @@ export class Simulation {
   }
 
   /** Replace state (after load). */
-  setState(st: WorldState) { this.st = st; this.bindRngs(); }
+  setState(st: WorldState) { this.st = st; this.bindRngs(); applyTradeEffects(st, this.params, this.trade, this.pairs); }
 
   hash() { return hashState(this.st); }
 }

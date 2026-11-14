@@ -66,7 +66,7 @@ export function App() {
   const fillFor = useCallback((owner: number) => {
     if (owner < 0) return '#2a2f3a';
     if (mode.kind === 'political') return politicalColor(owner);
-    if (mode.kind === 'categorical') return categoryOf(mode, owner, frame!.metrics, baseline!)[1];
+    if (mode.kind === 'categorical') return categoryOf(mode, owner, frame!.metrics, baseline!, frame!.blocLabels)[1];
     return scale && frame ? scale.color(frame.metrics[mode.metric!][owner]) : '#333';
   }, [mode, scale, frame, baseline]);
   const weight = useCallback((c: number) => frame?.metrics.pop[c] ?? 0, [frame]);
@@ -76,7 +76,7 @@ export function App() {
   }
 
   const { y } = civilFromDays(frame.day);
-  const hoverValue = hover && hover.owner >= 0 ? (mode.kind === 'categorical' ? categoryOf(mode, hover.owner, frame.metrics, baseline)[0] : mode.metric ? mode.fmt!(frame.metrics[mode.metric][hover.owner]) : null) : null;
+  const hoverValue = hover && hover.owner >= 0 ? (mode.kind === 'categorical' ? categoryOf(mode, hover.owner, frame.metrics, baseline, frame.blocLabels)[0] : mode.metric ? mode.fmt!(frame.metrics[mode.metric][hover.owner]) : null) : null;
 
   return (
     <div className="app">
@@ -126,7 +126,7 @@ export function App() {
               <span className="ramp"><span>{mode.fmt(scale.lo)}</span><i style={{ background: `linear-gradient(90deg, ${scale.stops.join(',')})` }} /><span>{mode.fmt(scale.hi)}</span></span>
             )}
             {mode.kind === 'categorical' && (
-              <span className="cats">{[...new Map(regions.filter((r) => r.owner >= 0).map((r) => categoryOf(mode, r.owner, frame.metrics, baseline))).entries()].sort().map(([l, col]) => <span key={l}><i style={{ background: col }} />{l}</span>)}</span>
+              <span className="cats">{[...new Map(regions.filter((r) => r.owner >= 0).map((r) => categoryOf(mode, r.owner, frame.metrics, baseline, frame.blocLabels))).entries()].sort().map(([l, col]) => <span key={l}><i style={{ background: col }} />{l}</span>)}</span>
             )}
             {mode.note && <span className="muted note">{mode.note}</span>}
           </div>

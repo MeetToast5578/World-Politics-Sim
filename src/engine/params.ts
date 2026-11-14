@@ -134,6 +134,31 @@ export const DEFAULT_PARAMS = {
     thresholds: { democratise: 0.5, autocratise: 0.46, liberal: 0.75, electoral: 0.3 },
   },
 
+  // --- diplomacy (systems/diplomacy.ts) ---
+  diplomacy: {
+    powers: 12,            // the largest military powers are all paired with each other
+    trustYears: 5,         // trust adjusts toward its drivers over ~5 years (assumption)
+    grievanceYears: 15,    // grievances fade slowly: decades-old conflicts still weigh (assumption)
+    friendShoring: 0.3,    // bilateral trade × e^(0.3·Δtrust) (political relations shape trade; magnitude assumption)
+    /** Trust = tanh(c + Σ drivers). Weights are assumptions; UN-voting distance is the dominant term because it is
+     *  the best observed proxy of foreign-policy alignment (Bailey, Strezhnev & Voeten 2017). */
+    trust: { c: 0.9, fp: 0.35, ideo: 0.5, trade: 0.5, ally: 0.8, rel: 0.4, grievance: 0.5, sanctions: 0.6 },
+    /** Crises: world rate ≈ 4 a year (International Crisis Behavior project order of magnitude since 1990). */
+    crisis: { perYear: 4, max: 0.3, threat: 6, grievance: 2, trust: 2, unrest: 2, grievanceAdd: 0.4, trustLoss: 0.15 },
+    /** Sanctions: new directed episodes per year (assumption, order of magnitude of the Global Sanctions Data Base,
+     *  which counts a multilateral package once; here every sender counts); lifting ≈ 12%/yr at neutral trust;
+     *  trade cut 60% for comprehensive measures (EU-Russia trade fell ~60% in 2021-23); productivity cost up to
+     *  1%/yr (Neuenkirch & Neumeier 2015: −0.9 to −2 pp growth). */
+    sanctions: { perYear: 20, max: 0.3, maxTrust: 0, trigger: 0.3, coup: 4, threat: 4, grievance: 1, trust: 4, trade: 0.5, size: 0.15, coalition: 4,
+      grievanceAdd: 0.3, liftBase: 0.12, liftTrust: 1.5, tradeCut: 0.6, productivityCost: 0.01, loadScale: 1.5,
+      /** UN Security Council regimes: lifting ≈ 3%/yr (regimes such as Iraq 1990-2003 and the DPRK since 2006 last
+       *  decades), multiplied by e^(8·democratic gain) after regime change. Assumptions. */
+      unLiftBase: 0.03, unLiftDemocracy: 8 },
+    /** Alliances: hazards saturate at max/yr; rates calibrated to ATOP (data build). accept: members' mean trust
+     *  needed; region: weight of mean proximity to the members (alliances are mostly regional). */
+    alliances: { max: 0.3, trust: 3, threat: 3, accept: 0.3, region: 3, leaveTrust: 0.1 },
+  },
+
   // --- military ---
   /** Annual depreciation of the military capital stock (equipment, training). Assumption. */
   milDepreciation: 0.08,

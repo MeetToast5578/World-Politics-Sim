@@ -105,6 +105,22 @@ GDP values from years before 2023 are treated as 2023 USD without deflating — 
 * Known WRP coding choices that differ from other sources: Israel's Jewish population is coded mostly "Orthodox
   Jewish"; Japan's Shinto and Buddhist shares follow WRP's single-affiliation split; China is 42% syncretic.
 
+### Phase 3b additions: diplomacy
+
+| Data | Source | Notes |
+|---|---|---|
+| Defence treaties (`meta.diplomacy.treaties`) | ATOP 5.1 (Leeds et al.), member file, treaties with a defence obligation active in min(reference year, 2018) | COW numbers → our ids via the COW crosswalk; NATO and the EU's TEU 42.7 clause named from their membership, others labelled by members; free for research with citation |
+| Post-2018 membership changes | documented in `ALLIANCE_UPDATES` (build script) | North Macedonia joins NATO (2020), UK leaves the EU (2020), Finland joins NATO (2023); Sweden (2024) is after the baseline |
+| Alliance base rates | ATOP member file, 18 years up to 2018 | accessions 1.78/yr, exits 1.78/yr, new treaties 0.39/yr (2001-2018) |
+| UN voting position (`unIdeal`) | Bailey, Strezhnev & Voeten ideal points (`IdealpointestimatesFP_2026FP.csv`, Harvard Dataverse, CC0) | latest ≤ reference year; 7 entities imputed (Taiwan, Kosovo, Palestine, …) |
+| Conflict history (`meta.diplomacy.grievances`) | COW Dyadic MIDs 4.03 (to 2014), UCDP/PRIO Armed Conflict Dataset v26.1 (interstate, 2015-reference year, CC BY 4.0) | weights: MID threat 0.05, display 0.1, use of force 0.3, war 1.0; UCDP minor 0.5, war 1.5 per year; decayed with a 15-year memory |
+| Sanctions in force (`meta.diplomacy.sanctions`) | curated from OFAC programme pages, EU Sanctions Map, UK sanctions list, UN SC committees | major programmes only (Russia, Belarus, Iran, DPRK (UN), Syria, Venezuela, Cuba, Myanmar for 2023; Iraq (UN), Cuba, Iran, Libya, Sudan, DPRK, Myanmar, FR Yugoslavia for 2000); intensity 1 sectoral, 0.4 targeted |
+
+* The Global Sanctions Data Base would provide complete sanction histories but requires registration, so the sanction
+  list is partial (programmes with mostly individual listings are omitted) and sanction rates are not validated.
+* Gleditsch-Ward codes differing from COW numbers are fixed for Yemen (678), Germany (260) and Serbia (340).
+* The build needs the `unzip` command-line tool (ATOP, MID and UCDP come as zip archives).
+
 ## Entity rules and overrides
 
 * One simulated country per Natural Earth sovereignty group (`SOV_A3`). Dependencies (e.g. Greenland, Puerto Rico,

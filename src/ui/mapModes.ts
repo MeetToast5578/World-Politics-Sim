@@ -20,6 +20,9 @@ export const MAP_MODES: MapMode[] = [
   { id: 'unrest', label: 'Unrest', group: 'Politics', kind: 'sequential', metric: 'unrest', fmt: (v) => fmtPct(v, 0) },
   { id: 'coupRisk', label: 'Coup risk', group: 'Politics', kind: 'sequential', metric: 'coupRisk', log: true, fmt: (v) => fmtPct(v, 1), note: 'Annual probability of a coup attempt.' },
   { id: 'government', label: 'Constitutional form', group: 'Politics', kind: 'categorical', note: 'Baseline classification from Wikidata (static).' },
+  { id: 'relations', label: 'Relations with selected', group: 'Diplomacy', kind: 'diverging', metric: 'relSel', fmt: (v) => v.toFixed(2), note: 'Trust toward the selected country (blue friendly, red hostile; grey = no significant relation). Select a country first.' },
+  { id: 'alliances', label: 'Alliance blocs', group: 'Diplomacy', kind: 'categorical', metric: 'bloc', note: "Each country's largest multilateral defence treaty (ATOP, evolved by the simulation)." },
+  { id: 'sanctioned', label: 'Sanctions pressure', group: 'Diplomacy', kind: 'sequential', metric: 'sanctionLoad', fmt: (v) => fmtPct(v, 0), note: 'Share of world GDP sanctioning the country, weighted by intensity.' },
   { id: 'religion', label: 'Largest denomination', group: 'Religion', kind: 'categorical', metric: 'majorRel', note: 'World Religion Project 2010, evolved by secularisation and population change.' },
   { id: 'relPolar', label: 'Religious polarisation', group: 'Religion', kind: 'sequential', metric: 'relPolar', fmt: (v) => v.toFixed(2), note: 'Montalvo–Reynal-Querol index over denominations (1 = two equal groups).' },
   { id: 'nonrel', label: 'Non-religious', group: 'Religion', kind: 'sequential', metric: 'nonrel', fmt: (v) => fmtPct(v, 0) },
@@ -68,7 +71,10 @@ const RELIGION_COLORS: Record<string, string> = {
 };
 
 /** Category label and colour of a country in a categorical map mode. */
-export function categoryOf(mode: MapMode, owner: number, metrics: Record<string, number[]>, b: Baseline): [string, string] {
+const BLOC_COLORS = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#b07aa1', '#edc948', '#76b7b2', '#ff9da7', '#9c755f', '#bab0ac', '#8cd17d', '#d37295'];
+
+export function categoryOf(mode: MapMode, owner: number, metrics: Record<string, number[]>, b: Baseline, blocLabels: string[] = []): [string, string] {
+  if (mode.id === 'alliances') { const k = metrics.bloc[owner]; return k < 0 ? ['No multilateral defence treaty', '#3a3f4b'] : [blocLabels[k], BLOC_COLORS[k % BLOC_COLORS.length]]; }
   if (mode.id === 'government') { const g = b.countries[owner].government.form; return [GOV_LABELS[g], GOV_COLORS[g]]; }
   if (mode.id === 'regime') { const r = metrics.regime[owner]; return [REGIME_LABELS[r], REGIME_COLORS[r]]; }
   const label = b.meta.religions[metrics.majorRel[owner]].label;

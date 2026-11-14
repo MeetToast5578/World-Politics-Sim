@@ -50,6 +50,21 @@ export function describeEvent(e: SimEvent, name: (c: number) => string): string 
       return `${c} becomes an electoral democracy (democracy index ${e.v!.toFixed(2)}, legitimacy ${pct(x.legit, 0)}).`;
     case 'autocratization':
       return `${c} slides into electoral autocracy (democracy index ${e.v!.toFixed(2)}; incumbent approval ${pct(x.approval, 0)}).`;
+    // diplomacy
+    case 'diplomatic_crisis':
+      return `Diplomatic crisis between ${c} and ${name(e.o!)} (trust ${x.trust.toFixed(2)}, grievance ${x.grievance.toFixed(2)}, perceived threat ${x.threatAB.toFixed(2)} / ${x.threatBA.toFixed(2)}).`;
+    case 'sanctions_imposed':
+      return `${c} imposes ${e.v! >= 1 ? 'sectoral' : 'targeted'} sanctions on ${name(e.o!)} (trust ${x.trust.toFixed(2)}, grievance ${x.grievance.toFixed(2)}${x.coupMemory > 0.3 ? ', after a coup' : ''}${x.allies > 0 ? `, ${pct(x.allies, 0)} of its allies already sanctioning` : ''}; trade at stake ${pct(x.tradeDep)} of GDP).`;
+    case 'un_sanctions_lifted':
+      return `The UN Security Council lifts its sanctions on ${c} (democracy index ${x.demo.toFixed(2)}, ${x.demo0.toFixed(2)} at the start).`;
+    case 'sanctions_lifted':
+      return `${c} lifts its sanctions on ${name(e.o!)} (trust ${x.trust.toFixed(2)}).`;
+    case 'alliance_joined':
+      return `${c} joins a defence treaty with ${name(e.o!)} and others (now ${e.v} members; trust in members ${x.trustInMembers.toFixed(2)}${x.threatFrom >= 0 ? `, main threat ${name(x.threatFrom)}` : ''}).`;
+    case 'alliance_left':
+      return `${c} leaves its defence treaty with ${e.o! >= 0 ? name(e.o!) : 'its partners'} (trust in members ${x.trustInMembers.toFixed(2)}; ${e.v} members remain).`;
+    case 'alliance_formed':
+      return `${c} and ${name(e.o!)} sign a defence pact (trust ${x.trust.toFixed(2)}, threats faced ${x.threatA.toFixed(2)} / ${x.threatB.toFixed(2)}).`;
     case 'elections_restored':
       return `${c}: the ruling authorities restore elections (democracy index ${e.v!.toFixed(2)}).`;
     default:

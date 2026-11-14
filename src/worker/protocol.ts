@@ -21,6 +21,11 @@ export interface CountryDetail {
   history: { years: number[]; series: Record<string, number[]> };
   pyramid: { f: number[]; m: number[] }; // persons by single year of age 0..100+
   religion: number[];                     // shares by baseline.meta.religions category
+  diplomacy: {
+    treaties: { label: string; members: number; since: number }[];
+    /** every relation of the country, most trusted first; drivers decompose the trust target (the "why") */
+    relations: { c: number; trust: number; grievance: number; sanctionsBy: number; sanctionsOn: number; drivers: Record<string, number> }[];
+  };
 }
 
 export interface Frame {
@@ -32,6 +37,7 @@ export interface Frame {
   branches: { day: number; seed: number }[];
   metrics: Record<string, number[]>; // map mode -> value per country
   world: { pop: number; gdp: number; old: number; oil: number; events: number; years: number[]; popSeries: number[]; gdpSeries: number[] };
+  blocLabels: string[]; // labels of multilateral defence treaties, index = metrics.bloc value
   newEvents: SimEvent[];
   resetEvents: boolean; // true: newEvents is the full list (after load / rewind / restart)
   detail: CountryDetail | null;

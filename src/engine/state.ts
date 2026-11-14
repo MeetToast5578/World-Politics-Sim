@@ -20,6 +20,8 @@ export const FIELDS = [
   // politics
   'demo', 'demo0', 'regime', 'approval', 'legit', 'legit0', 'perf', 'unrest', 'unrest0', 'ideology', 'govYears', 'govTerms',
   'nextElection', 'coupMem', 'growthEma', 'growthLong', 'misery0', 'youth0', 'polar0', 'rev0',
+  // diplomacy: foreign-policy (UN voting) position, sanction pressure (share of world GDP sanctioning, × intensity)
+  'fp', 'fp0', 'sanctionLoad', 'demoPrevY', 'unSanction',
   // governance (static in Phase 1, WGI scale ≈ -2.5..2.5)
   'wgiVoice', 'wgiStability', 'wgiEffectiveness', 'wgiRuleOfLaw', 'wgiCorruption',
 ] as const;
@@ -27,8 +29,13 @@ export type Field = (typeof FIELDS)[number];
 
 /** World-level variables (not per country). */
 // oilLn: log real oil price relative to baseline; oilDln: its last quarterly change;
-// coupBase: coup hazard offset, solved at t0 so the world attempt rate matches the observed base rate
-export const GLOBALS = ['oilLn', 'oilDln', 'coupBase'] as const;
+// coupBase and off*: hazard offsets solved at t0 so world event rates match observed base rates
+export const GLOBALS = ['oilLn', 'oilDln', 'coupBase', 'offCrisis', 'offSanction', 'offJoin', 'offLeave', 'offPact'] as const;
+
+/** Per-pair diplomatic state (pair list in systems/diplomacy.ts PairNet; i < j). sancIJ: sanctions by i on j. */
+export const PAIR_FIELDS = ['trust', 'trust0', 'grievance', 'sancIJ', 'sancJI'] as const;
+export type PairField = (typeof PAIR_FIELDS)[number];
+export interface Treaty { id: string; label: string | null; members: number[]; since: number }
 export type Global = (typeof GLOBALS)[number];
 
 /** Single years of age 0..99 plus the open group 100+. */
@@ -61,6 +68,8 @@ export interface WorldState {
   g: Record<Global, number>;
   nRel: number;                  // religion categories (baseline.meta.religions)
   religion: Float64Array;        // population shares by country × religion category
+  pair: Record<PairField, Float64Array>; // diplomatic relations per pair (allocated once the pair list is built)
+  treaties: Treaty[];            // defence treaties, members as country indices
   regionOwner: Int16Array;       // region index -> country index (-1 = none). Territorial change = editing this.
   rng: Record<string, Uint32Array>;
   branches: { day: number; seed: number }[]; // reseeds applied during the timeline (replay honours them)
@@ -76,7 +85,8 @@ export function createState(baseline: Baseline, seed: number, startDate?: string
   const idx = new Map(cs.map((c, i) => [c.id, i]));
   const startDay = parseDate(startDate ?? baseline.meta.startDate);
   const st: WorldState = {
-    version: 1, seed: seed >>> 0, startDay, day: startDay, n, ids: cs.map((c) => c.id), f, cohorts: new Float64Array(n * 2 * AGES), g: { oilLn: 0, oilDln: 0, coupBase: 0 },
+    version: 1, seed: seed >>> 0, startDay, day: startDay, n, ids: cs.map((c) => c.id), f, cohorts: new Float64Array(n * 2 * AGES), g: { oilLn: 0, oilDln: 0, coupBase: 0, offCrisis: 0, offSanction: 0, offJoin: 0, offLeave: 0, offPact: 0 },
+    pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, new Float64Array(0)])) as Record<PairField, Float64Array>, treaties: [],
     nRel: baseline.meta.religions.length, religion: new Float64Array(n * baseline.meta.religions.length),
     regionOwner: Int16Array.from(baseline.regions.map((r) => (r.owner == null ? -1 : idx.get(r.owner) ?? -1))),
     rng: {}, branches: [], events: [], history: { years: [], data: Object.fromEntries(HIST_FIELDS.map((k) => [k, []])) as any },
@@ -98,6 +108,8 @@ export function cloneState(st: WorldState): WorldState {
     cohorts: st.cohorts.slice(),
     g: { ...st.g },
     religion: st.religion.slice(),
+    pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, st.pair[k].slice()])) as Record<PairField, Float64Array>,
+    treaties: st.treaties.map((t) => ({ ...t, members: t.members.slice() })),
     regionOwner: st.regionOwner.slice(),
     rng: Object.fromEntries(Object.entries(st.rng).map(([k, v]) => [k, v.slice()])),
     branches: st.branches.map((b) => ({ ...b })),
@@ -116,6 +128,8 @@ export function hashState(st: WorldState): string {
   for (const k of FIELDS) mix(new Uint8Array(st.f[k].buffer, st.f[k].byteOffset, st.f[k].byteLength));
   mix(new Uint8Array(st.cohorts.buffer));
   mix(new Uint8Array(st.religion.buffer));
+  for (const k of PAIR_FIELDS) mix(new Uint8Array(st.pair[k].buffer));
+  mix(enc.encode(JSON.stringify(st.treaties)));
   mix(new Uint8Array(st.regionOwner.buffer));
   for (const k of Object.keys(st.rng).sort()) mix(new Uint8Array(st.rng[k].buffer));
   mix(enc.encode(JSON.stringify(st.events)));

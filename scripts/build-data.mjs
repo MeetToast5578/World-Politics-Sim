@@ -6,6 +6,7 @@
 //      npm run data -- --year 2000   -> baseline-2000.json (for backtesting; same geometry and entities)
 // Needs network; raw downloads are cached in .cache/.
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { topology } from 'topojson-server';
 import { neighbors, feature, quantize } from 'topojson-client';
@@ -39,7 +40,46 @@ const SOURCES = {
   WRP: { name: 'World Religion Project, national data (Maoz & Henderson 2013), via Correlates of War', url: 'https://correlatesofwar.org/data-sets/world-religion-data/', license: 'Free for research use with citation (COW terms)' },
   PROXY: { name: 'Proxy: composition of a named related state (documented in DATA_SOURCES.md)', url: '', license: 'Model assumption' },
   CIA_WFB: { name: 'CIA World Factbook (South Sudan religion shares)', url: 'https://www.cia.gov/the-world-factbook/', license: 'Public domain' },
+  ATOP: { name: 'Alliance Treaty Obligations and Provisions (ATOP) 5.1, Leeds et al.', url: 'http://www.atopdata.org/', license: 'Free for research use with citation (ATOP terms)' },
+  UNGA: { name: 'UN General Assembly ideal points (Bailey, Strezhnev & Voeten), Harvard Dataverse doi:10.7910/DVN/LEJUQZ', url: 'https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LEJUQZ', license: 'CC0' },
+  MID: { name: 'Correlates of War Dyadic Militarized Interstate Disputes 4.03 (to 2014)', url: 'https://correlatesofwar.org/data-sets/mids/', license: 'Free for research use with citation (COW terms)' },
+  UCDP: { name: 'UCDP/PRIO Armed Conflict Dataset v26.1', url: 'https://ucdp.uu.se/downloads/', license: 'CC BY 4.0' },
+  CURATED: { name: 'Curated from official sanctions lists (OFAC programmes, EU Sanctions Map, UK sanctions list, UN SC committees)', url: 'https://sanctionsmap.eu/', license: 'Facts compiled for this project' },
 };
+
+// --- Sanctions programmes (curated; the Global Sanctions Data Base requires registration) ---------------
+// Only programmes with sectoral or economy-wide measures (plus Myanmar's post-2021-coup measures) are listed.
+// intensity 1 = sectoral/comprehensive, 0.4 = targeted (individuals, arms, specific firms). 'UN' = all UN members.
+const EU27 = ['AUT', 'BEL', 'BGR', 'HRV', 'CYP', 'CZE', 'DNK', 'EST', 'FIN', 'FRA', 'DEU', 'GRC', 'HUN', 'IRL', 'ITA', 'LVA', 'LTU', 'LUX', 'MLT', 'NLD', 'POL', 'PRT', 'ROU', 'SVK', 'SVN', 'ESP', 'SWE'];
+const EU15 = ['AUT', 'BEL', 'DNK', 'FIN', 'FRA', 'DEU', 'GRC', 'IRL', 'ITA', 'LUX', 'NLD', 'PRT', 'ESP', 'SWE', 'GBR'];
+const SANCTIONS = {
+  2023: [
+    { target: 'RUS', since: 2014, programme: 'Russia (Crimea 2014, invasion of Ukraine 2022)', senders: [['USA', 1], ['CAN', 1], ['GBR', 1], ...EU27.map((e) => [e, 1]), ['JPN', 1], ['AUS', 1], ['NZL', 1], ['NOR', 1], ['CHE', 1], ['ISL', 1], ['KOR', 0.4]] },
+    { target: 'BLR', since: 2020, programme: 'Belarus (2020 election, support for the 2022 invasion)', senders: [['USA', 1], ['CAN', 1], ['GBR', 1], ...EU27.map((e) => [e, 1]), ['JPN', 0.4], ['AUS', 0.4], ['NOR', 1], ['CHE', 1]] },
+    { target: 'IRN', since: 1995, programme: 'Iran (US comprehensive embargo; EU/UK/Canada/Australia targeted)', senders: [['USA', 1], ['CAN', 0.4], ['GBR', 0.4], ...EU27.map((e) => [e, 0.4]), ['AUS', 0.4]] },
+    { target: 'PRK', since: 2006, programme: 'DPRK (UN Security Council resolution 1718 and successors)', senders: [['UN', 1]] },
+    { target: 'SYR', since: 2011, programme: 'Syria (2011 crackdown)', senders: [['USA', 1], ['CAN', 1], ['GBR', 1], ...EU27.map((e) => [e, 1]), ['CHE', 1], ['AUS', 0.4]] },
+    { target: 'VEN', since: 2017, programme: 'Venezuela (US financial and oil sanctions; others targeted)', senders: [['USA', 1], ['CAN', 0.4], ['GBR', 0.4], ...EU27.map((e) => [e, 0.4]), ['CHE', 0.4]] },
+    { target: 'CUB', since: 1962, programme: 'Cuba (US embargo)', senders: [['USA', 1]] },
+    { target: 'MMR', since: 2021, programme: 'Myanmar (2021 coup)', senders: [['USA', 0.4], ['CAN', 0.4], ['GBR', 0.4], ...EU27.map((e) => [e, 0.4]), ['AUS', 0.4]] },
+  ],
+  2000: [
+    { target: 'IRQ', since: 1990, programme: 'Iraq (UN Security Council resolution 661 and successors)', senders: [['UN', 1]] },
+    { target: 'CUB', since: 1962, programme: 'Cuba (US embargo)', senders: [['USA', 1]] },
+    { target: 'IRN', since: 1995, programme: 'Iran (US embargo, Iran and Libya Sanctions Act 1996)', senders: [['USA', 1]] },
+    { target: 'LBY', since: 1986, programme: 'Libya (US embargo; UN measures suspended 1999)', senders: [['USA', 1]] },
+    { target: 'SDN', since: 1997, programme: 'Sudan (US embargo 1997)', senders: [['USA', 1]] },
+    { target: 'PRK', since: 1950, programme: 'North Korea (US Trading with the Enemy Act)', senders: [['USA', 1]] },
+    { target: 'MMR', since: 1997, programme: 'Myanmar (US 1997, EU 1996)', senders: [['USA', 0.4], ...EU15.map((e) => [e, 0.4])] },
+    { target: 'SRB', since: 1998, programme: 'Federal Republic of Yugoslavia (Kosovo, 1998; EU/US)', senders: [['USA', 1], ...EU15.map((e) => [e, 1])] },
+  ],
+};
+// Alliance membership changes after ATOP 5.1's last year (2018), applied when the reference year reaches them.
+const ALLIANCE_UPDATES = [
+  { year: 2020, treaty: 'NATO', add: 'MKD', note: 'North Macedonia joined NATO, 27 March 2020' },
+  { year: 2020, treaty: 'EU mutual defence (TEU 42.7)', remove: 'GBR', note: 'United Kingdom left the EU, 31 January 2020' },
+  { year: 2023, treaty: 'NATO', add: 'FIN', note: 'Finland joined NATO, 4 April 2023' },
+];
 
 // Religion categories of the World Religion Project, in model order: [WRP pct column, label, family].
 const RELIGIONS = [
@@ -169,16 +209,123 @@ async function vdem() {
   };
 }
 
+// --- Correlates of War code crosswalk (abbreviation and number -> our id) ------------------
+async function cowCrosswalk(countries) {
+  const cowNames = {}, numToAbb = {};
+  for (const l of (await cached('COW-country-codes.csv', 'https://correlatesofwar.org/wp-content/uploads/COW-country-codes.csv')).split(/\r?\n|\r/).slice(1)) {
+    const [abb, num, name] = l.split(','); if (abb) { cowNames[abb] = name; numToAbb[+num] = abb; }
+  }
+  const norm = (s) => s.toLowerCase().replace(/[^a-z]/g, '');
+  const byName = new Map(countries.map((c) => [norm(c.name), c.id]));
+  const abb = (a) => COW_FIX[a] || byName.get(norm(cowNames[a] || '')) || (countries.some((c) => c.id === a) ? a : null);
+  return { abb, num: (n) => (numToAbb[+n] ? abb(numToAbb[+n]) : null), name: (a) => cowNames[a] };
+}
+
+// --- ATOP defence treaties ----------------------------------------------------------------
+async function alliances(countries) {
+  const zip = path.join(CACHE, 'atop5_1_csv.zip');
+  if (!fs.existsSync(zip)) {
+    const r = await fetch('https://www.atopdata.org/uploads/6/9/1/3/69134503/atop_5.1__.csv_.zip', { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(120000) });
+    if (!r.ok) throw new Error(`ATOP download ${r.status}`);
+    fs.writeFileSync(zip, Buffer.from(await r.arrayBuffer()));
+  }
+  const read = (f) => execFileSync('unzip', ['-p', zip, `ATOP 5.1 (.csv)/${f}`], { maxBuffer: 1 << 28 }).toString();
+  const parse = (txt) => { const [h, ...rows] = txt.trim().split(/\r?\n/); const k = h.split(','); return rows.map((l) => Object.fromEntries(l.split(',').map((v, i) => [k[i], v]))); };
+  const cw = await cowCrosswalk(countries);
+  const Y = Math.min(REF_YEAR, 2018), yr = (x) => +x || 0;
+  const mem = parse(read('atop5_1m.csv')).filter((r) => r.defense === '1');
+  const founded = {};
+  for (const r of mem) founded[r.atopid] = Math.min(founded[r.atopid] ?? 9999, yr(r.yrent));
+  const activeAt = (r, y) => yr(r.yrent) <= y && (yr(r.yrexit) === 0 || yr(r.yrexit) > y);
+  const treaties = {};
+  for (const r of mem) {
+    if (!activeAt(r, Y)) continue;
+    const id = cw.num(r.member);
+    if (!id) continue;
+    (treaties[r.atopid] ??= { id: `ATOP${r.atopid}`, since: founded[r.atopid], members: new Set() }).members.add(id);
+  }
+  // name treaties only where membership identifies them unambiguously
+  for (const t of Object.values(treaties)) {
+    const m = t.members;
+    if (m.has('USA') && m.has('CAN') && m.has('GBR') && m.has('TUR')) t.label = 'NATO';
+    else if (m.has('IRL') && m.has('AUT') && m.has('FRA') && !m.has('USA') && m.size >= 20) t.label = 'EU mutual defence (TEU 42.7)';
+  }
+  const notes = [];
+  for (const u of ALLIANCE_UPDATES) {
+    if (u.year > REF_YEAR) continue;
+    const t = Object.values(treaties).find((x) => x.label === u.treaty);
+    if (!t) throw new Error('alliance update: treaty not found ' + u.treaty);
+    if (u.add) t.members.add(u.add); if (u.remove) t.members.delete(u.remove);
+    notes.push(u.note);
+  }
+  // base rates over the 18 years up to Y: accessions to existing treaties, exits, new treaties
+  let acc = 0, exits = 0, fresh = new Set();
+  for (const r of mem) {
+    const e = yr(r.yrent), x = yr(r.yrexit);
+    if (e >= Y - 17 && e <= Y) { if (e > founded[r.atopid]) acc++; else fresh.add(r.atopid); }
+    if (x >= Y - 17 && x <= Y) exits++;
+  }
+  const list = Object.values(treaties).filter((t) => t.members.size >= 2).map((t) => ({ ...t, members: [...t.members].sort() }));
+  return {
+    treaties: list, notes, atopYear: Y,
+    rates: { window: `${Y - 17}-${Y}`, accessionsPerYear: +(acc / 18).toFixed(3), exitsPerYear: +(exits / 18).toFixed(3), newTreatiesPerYear: +(fresh.size / 18).toFixed(3) },
+  };
+}
+
+// --- Conflict history -> initial grievance between pairs ------------------------------------------
+// Each dispute-year adds a hostility weight, decayed by age with the model's grievance memory (15 years):
+// MIDs (COW) for years up to 2014, UCDP interstate conflicts for later years (no double counting).
+const MID_WEIGHT = { 2: 0.05, 3: 0.1, 4: 0.3, 5: 1.0 };   // threat, display, use of force, war (assumption)
+const UCDP_WEIGHT = { 1: 0.5, 2: 1.5 };                    // minor (25-999 deaths/yr), war (1000+) (assumption)
+const GW_FIX = { 678: 'YEM', 260: 'DEU', 340: 'SRB' };     // Gleditsch-Ward codes that differ from COW numbers
+async function conflictHistory(countries) {
+  const cw = await cowCrosswalk(countries);
+  const unz = async (name, url, entry) => {
+    const zip = path.join(CACHE, name);
+    if (!fs.existsSync(zip)) { const r = await fetch(url, { signal: AbortSignal.timeout(120000) }); if (!r.ok) throw new Error(`${r.status} ${url}`); fs.writeFileSync(zip, Buffer.from(await r.arrayBuffer())); }
+    return execFileSync('unzip', ['-p', zip, entry], { maxBuffer: 1 << 28 }).toString();
+  };
+  const csvRows = (txt) => {
+    const lines = txt.trim().split(/\r?\n/), split = (l) => [...l.matchAll(/("([^"]*)"|[^,]*)(,|$)/g)].map((m) => m[2] ?? m[1]).slice(0, -1);
+    const h = split(lines[0]);
+    return lines.slice(1).map((l) => Object.fromEntries(split(l).map((v, i) => [h[i], v])));
+  };
+  const g = new Map(), add = (a, b, w, y) => {
+    if (!a || !b || a === b || y > REF_YEAR) return;
+    const k = [a, b].sort().join('-');
+    g.set(k, (g.get(k) ?? 0) + w * Math.exp(-(REF_YEAR - y) / 15));
+  };
+  const mids = csvRows(await unz('dyadic_mid403.zip', 'https://correlatesofwar.org/wp-content/uploads/dyadic_mid_4.03_update.zip', 'dyadic_mid_4.03_update/dyadic_mid_4.03.csv'));
+  for (const r of mids) if (+r.year >= REF_YEAR - 45) add(cw.num(r.statea), cw.num(r.stateb), MID_WEIGHT[+r.hihost] ?? 0, +r.year);
+  const ucdp = csvRows(await unz('ucdp_acd_261.zip', 'https://ucdp.uu.se/downloads/ucdpprio/ucdp-prio-acd-261-csv.zip', 'UcdpPrioConflict_v26_1.csv'));
+  const gw = (x) => GW_FIX[+x] ?? cw.num(x);
+  for (const r of ucdp) {
+    if (r.type_of_conflict !== '2' || +r.year <= 2014) continue;
+    for (const a of r.gwno_a.split(',')) for (const b of r.gwno_b.split(',')) add(gw(a.trim()), gw(b.trim()), UCDP_WEIGHT[+r.intensity_level] ?? 0, +r.year);
+  }
+  return [...g.entries()].filter(([, v]) => v >= 0.05).map(([k, v]) => { const [a, b] = k.split('-'); return { a, b, g: +v.toFixed(3) }; });
+}
+
+// --- UN General Assembly ideal points (foreign-policy position) ----------------------------
+async function ungaIdeal() {
+  const txt = await cached('unga_ideal.csv', 'https://dataverse.harvard.edu/api/access/datafile/14098429');
+  const [h, ...rows] = txt.trim().split(/\r?\n/);
+  const k = h.split(',').map((x) => x.replace(/"/g, '')), iIso = k.indexOf('iso3c'), iY = k.indexOf('year'), iV = k.indexOf('IdealPointFP');
+  const out = {};
+  for (const l of rows) {
+    const r = l.split(',').map((x) => x.replace(/"/g, ''));
+    const iso = r[iIso], y = +r[iY], v = +r[iV];
+    if (!iso || iso === 'NA' || y > REF_YEAR || y < MIN_YEAR || !Number.isFinite(v)) continue;
+    if (!out[iso] || y > out[iso].y) out[iso] = { v, y };
+  }
+  return out;
+}
+
 // --- World Religion Project (COW codes) ----------------------------------------------
 async function religion(countries) {
   const lines = (await cached('WRP_national.csv', 'https://correlatesofwar.org/wp-content/uploads/WRP_national.csv')).trim().split('\n');
   const head = lines[0].split(','), col = Object.fromEntries(head.map((h, i) => [h, i]));
-  const cowNames = {};
-  for (const l of (await cached('COW-country-codes.csv', 'https://correlatesofwar.org/wp-content/uploads/COW-country-codes.csv')).split(/\r?\n|\r/).slice(1)) {
-    const [abb, , name] = l.split(','); if (abb) cowNames[abb] = name;
-  }
-  const norm = (s) => s.toLowerCase().replace(/[^a-z]/g, '');
-  const byName = new Map(countries.map((c) => [norm(c.name), c.id]));
+  const cw = await cowCrosswalk(countries);
   const year = [...new Set(lines.slice(1).map((l) => +l.split(',')[0]))].filter((y) => y <= REF_YEAR).sort((a, b) => b - a)[0];
   const out = {};
   // rows of the reference WRP year first; states that did not exist yet (e.g. Montenegro, Timor-Leste in 2000) take
@@ -186,8 +333,8 @@ async function religion(countries) {
   const rows = lines.slice(1).map((l) => l.split(',')).filter((r) => +r[0] >= year)
     .sort((a, b) => (+a[0] === year ? 0 : +a[0]) - (+b[0] === year ? 0 : +b[0]));
   for (const r of rows) {
-    const id = COW_FIX[r[2]] || byName.get(norm(cowNames[r[2]] || '')) || (countries.some((c) => c.id === r[2]) ? r[2] : null);
-    if (!id) { if (+r[0] === year) console.warn('WRP: unmatched', r[2], cowNames[r[2]]); continue; }
+    const id = cw.abb(r[2]);
+    if (!id) { if (+r[0] === year) console.warn('WRP: unmatched', r[2], cw.name(r[2])); continue; }
     if (out[id]) continue;
     const sh = RELIGIONS.map(([k]) => +r[col[k]] || 0);
     // a family total above the sum of its denominations goes to that family's "other" category
@@ -411,6 +558,7 @@ async function main() {
   ind.growthSd = await growthVolatility();
   const vd = await vdem();
   ind.vdemEdi = vd.edi; ind.regimeRow = vd.row;
+  ind.unIdeal = await ungaIdeal();
   const gov = await wikidataGov([...new Set(regions.map((r) => r.wikidata).filter(Boolean))]);
   console.log();
 
@@ -431,6 +579,7 @@ async function main() {
     ...WDI, ...IMF, growthSd: ['WDI', `NY.GDP.MKTP.KD.ZG (sd ${VOL_FROM}-${VOL_TO})`, 'gavg'],
     // political fields come from the core territory only (China's regime is not averaged with Hong Kong's)
     vdemEdi: ['VDEM', 'electdem_vdem (v2x_polyarchy)', 'core'], regimeRow: ['VDEM', 'regime_row_owid (v2x_regime)', 'core'],
+    unIdeal: ['UNGA', 'IdealPointFP', 'core'],
   };
   for (const c of countries) {
     // weights for averages: data population / GDP of each member (or NE estimate)
@@ -558,6 +707,28 @@ async function main() {
     return { r: +a.toFixed(5), K: +(-a / bq).toFixed(4), n, window: `${y0}-${y1}` };
   })();
   console.log('secularisation', JSON.stringify(secularisation));
+  // Diplomacy: defence treaties, sanctions programmes in force, and the cross-sectional link between democracy and
+  // UN voting position (used to move a country's foreign-policy position when its regime changes).
+  const al = await alliances(countries);
+  const grievances = await conflictHistory(countries);
+  console.log('grievances', grievances.length, 'pairs; top', grievances.sort((x, y) => y.g - x.g).slice(0, 8).map((x) => `${x.a}-${x.b} ${x.g}`).join(', '));
+  const ids = new Set(countries.map((c) => c.id));
+  const sanctionYear = REF_YEAR >= 2022 ? 2023 : 2000;
+  if (REF_YEAR !== sanctionYear) console.warn(`sanctions list is for ${sanctionYear}, reference year ${REF_YEAR}`);
+  const sanctions = SANCTIONS[sanctionYear].flatMap((p) => p.senders.flatMap(([s, intensity]) =>
+    [{ sender: s, target: p.target, intensity, since: p.since, programme: p.programme }]));
+  // 'UN' = Security Council regime: one collective sender (the model treats it as a country-level status)
+  for (const s of sanctions) if ((s.sender !== 'UN' && !ids.has(s.sender)) || !ids.has(s.target)) throw new Error(`sanction: unknown country ${s.sender}->${s.target}`);
+  const foreignPolicy = (() => {
+    const pts = countries.filter((c) => c.fields.unIdeal?.s === 'UNGA' && c.fields.vdemEdi?.s === 'VDEM').map((c) => [c.fields.vdemEdi.v, c.fields.unIdeal.v]);
+    const n = pts.length, mx = pts.reduce((s, p) => s + p[0], 0) / n, my = pts.reduce((s, p) => s + p[1], 0) / n;
+    let sxy = 0, sxx = 0, syy = 0;
+    for (const [x, y] of pts) { sxy += (x - mx) * (y - my); sxx += (x - mx) ** 2; syy += (y - my) ** 2; }
+    return { slopeOnDemocracy: +(sxy / sxx).toFixed(3), r2: +((sxy * sxy) / (sxx * syy)).toFixed(3), n };
+  })();
+  console.log('alliances', al.treaties.length, 'treaties;', JSON.stringify(al.rates), al.notes.join('; '));
+  console.log('sanctions', sanctions.length, 'directed pairs; foreign policy', JSON.stringify(foreignPolicy));
+
   const relMissing = countries.filter((c) => !c.religion).map((c) => c.id);
   if (relMissing.length) console.warn('religion missing for', relMissing.join(' '));
 
@@ -573,7 +744,8 @@ async function main() {
       referenceYear: REF_YEAR, minYear: MIN_YEAR, startDate: `${REF_YEAR + 1}-01-01`,
       generated: new Date().toISOString().slice(0, 10), sources: SOURCES,
       indicators: Object.fromEntries(Object.entries(allFields).map(([k, [s, code, agg]]) => [k, { source: s, code, agg }])),
-      curves, coverage, baseRates: vd.baseRates, secularisation,
+      curves, coverage, baseRates: { ...vd.baseRates, alliances: al.rates }, secularisation,
+      diplomacy: { treaties: al.treaties, atopYear: al.atopYear, allianceUpdates: al.notes, sanctions, sanctionsAsOf: sanctionYear, foreignPolicy, grievances },
       religions: RELIGIONS.map(([, label, family]) => ({ label, family })),
     },
     countries: countries.map(({ members, ...c }) => c),

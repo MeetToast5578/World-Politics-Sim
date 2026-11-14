@@ -8,6 +8,7 @@ import { FIELDS, totalPop, cloneState } from '../src/engine/state';
 import { demographyYearly, solveSiler, lifeExpectancy, under5 } from '../src/engine/systems/demography';
 import { economyQuarterly, interestRate } from '../src/engine/systems/economy';
 import { coupHazard } from '../src/engine/systems/politics';
+import { applyTradeEffects, pairOf } from '../src/engine/systems/diplomacy';
 
 const b = loadBaseline();
 const years = (sim: Simulation, n: number) => sim.advanceTo(addMonths(sim.st.day, 12 * n));
@@ -132,6 +133,39 @@ describe('religion and politics', () => {
       expect([0, 1, 2, 3]).toContain(f.regime[c]);
       expect(Math.abs(f.ideology[c])).toBeLessThanOrEqual(1);
     }
+  });
+});
+
+describe('diplomacy', () => {
+  const sim = new Simulation(b, { seed: 2 });
+  const id = (x: string) => sim.st.ids.indexOf(x);
+  const trust = (a: string, c: string) => sim.st.pair.trust[pairOf(sim.pairs, sim.st.n, id(a), id(c))];
+  it('initial relations reflect alignment, alliances and conflict history', () => {
+    expect(trust('USA', 'GBR')).toBeGreaterThan(0.6);
+    expect(trust('FRA', 'DEU')).toBeGreaterThan(0.6);
+    expect(trust('RUS', 'UKR')).toBeLessThan(-0.6);
+    expect(trust('IND', 'PAK')).toBeLessThan(-0.6);
+    const nato = sim.st.treaties.find((t) => t.label === 'NATO')!;
+    expect(nato.members).toContain(id('FIN'));
+    expect(nato.members).not.toContain(id('SWE')); // joined March 2024, after the baseline
+  });
+  it('sanctions reduce bilateral trade; lifting them restores it', () => {
+    const s2 = new Simulation(b, { seed: 2 });
+    const q = pairOf(s2.pairs, s2.st.n, id('USA'), id('CUB'));
+    const [ka] = s2.pairs.tradeK[q], a = s2.pairs.i[q];
+    expect(ka).toBeGreaterThanOrEqual(0);
+    const before = s2.trade.mult[a][ka];
+    s2.st.pair.sancIJ[q] = 0; s2.st.pair.sancJI[q] = 0;
+    applyTradeEffects(s2.st, s2.params, s2.trade, s2.pairs);
+    expect(s2.trade.mult[a][ka]).toBeGreaterThan(before);
+  });
+  it('relations and treaties stay valid over 100 years', () => {
+    const s3 = new Simulation(b, { seed: 8 });
+    years(s3, 100);
+    for (const k of ['trust', 'grievance', 'sancIJ', 'sancJI'] as const) for (const v of s3.st.pair[k]) expect(Number.isFinite(v)).toBe(true);
+    for (const v of s3.st.pair.trust) { expect(v).toBeGreaterThanOrEqual(-1); expect(v).toBeLessThanOrEqual(1); }
+    for (const t of s3.st.treaties) { expect(t.members.length).toBeGreaterThanOrEqual(2); expect(new Set(t.members).size).toBe(t.members.length); }
+    for (const k of ['offCrisis', 'offSanction', 'offJoin', 'offLeave', 'offPact'] as const) expect(Number.isFinite(s3.st.g[k])).toBe(true);
   });
 });
 
