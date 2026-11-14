@@ -15,13 +15,20 @@ export const FIELDS = [
   'debt', 'revShare', 'primSpendShare', 'pb0', 'debtRatio0',
   // military
   'milexShare', 'milCap', 'afRate',
+  // religion (indices of the composition in WorldState.religion)
+  'relFrac', 'relPolar', 'secCeil',
+  // politics
+  'demo', 'demo0', 'regime', 'approval', 'legit', 'legit0', 'perf', 'unrest', 'unrest0', 'ideology', 'govYears', 'govTerms',
+  'nextElection', 'coupMem', 'growthEma', 'growthLong', 'misery0', 'youth0', 'polar0', 'rev0',
   // governance (static in Phase 1, WGI scale ≈ -2.5..2.5)
   'wgiVoice', 'wgiStability', 'wgiEffectiveness', 'wgiRuleOfLaw', 'wgiCorruption',
 ] as const;
 export type Field = (typeof FIELDS)[number];
 
 /** World-level variables (not per country). */
-export const GLOBALS = ['oilLn', 'oilDln'] as const; // log real oil price relative to baseline, its last quarterly change
+// oilLn: log real oil price relative to baseline; oilDln: its last quarterly change;
+// coupBase: coup hazard offset, solved at t0 so the world attempt rate matches the observed base rate
+export const GLOBALS = ['oilLn', 'oilDln', 'coupBase'] as const;
 export type Global = (typeof GLOBALS)[number];
 
 /** Single years of age 0..99 plus the open group 100+. */
@@ -52,6 +59,8 @@ export interface WorldState {
   f: Record<Field, Float64Array>;
   cohorts: Float64Array;         // persons by country × sex × single age, see cohortIndex
   g: Record<Global, number>;
+  nRel: number;                  // religion categories (baseline.meta.religions)
+  religion: Float64Array;        // population shares by country × religion category
   regionOwner: Int16Array;       // region index -> country index (-1 = none). Territorial change = editing this.
   rng: Record<string, Uint32Array>;
   branches: { day: number; seed: number }[]; // reseeds applied during the timeline (replay honours them)
@@ -67,7 +76,8 @@ export function createState(baseline: Baseline, seed: number, startDate?: string
   const idx = new Map(cs.map((c, i) => [c.id, i]));
   const startDay = parseDate(startDate ?? baseline.meta.startDate);
   const st: WorldState = {
-    version: 1, seed: seed >>> 0, startDay, day: startDay, n, ids: cs.map((c) => c.id), f, cohorts: new Float64Array(n * 2 * AGES), g: { oilLn: 0, oilDln: 0 },
+    version: 1, seed: seed >>> 0, startDay, day: startDay, n, ids: cs.map((c) => c.id), f, cohorts: new Float64Array(n * 2 * AGES), g: { oilLn: 0, oilDln: 0, coupBase: 0 },
+    nRel: baseline.meta.religions.length, religion: new Float64Array(n * baseline.meta.religions.length),
     regionOwner: Int16Array.from(baseline.regions.map((r) => (r.owner == null ? -1 : idx.get(r.owner) ?? -1))),
     rng: {}, branches: [], events: [], history: { years: [], data: Object.fromEntries(HIST_FIELDS.map((k) => [k, []])) as any },
     milestones: {},
@@ -87,6 +97,7 @@ export function cloneState(st: WorldState): WorldState {
     f: Object.fromEntries(FIELDS.map((k) => [k, st.f[k].slice()])) as Record<Field, Float64Array>,
     cohorts: st.cohorts.slice(),
     g: { ...st.g },
+    religion: st.religion.slice(),
     regionOwner: st.regionOwner.slice(),
     rng: Object.fromEntries(Object.entries(st.rng).map(([k, v]) => [k, v.slice()])),
     branches: st.branches.map((b) => ({ ...b })),
@@ -104,6 +115,7 @@ export function hashState(st: WorldState): string {
   mix(enc.encode(`${st.seed}|${st.day}|${st.n}|${JSON.stringify(st.branches)}|${JSON.stringify(st.g)}`));
   for (const k of FIELDS) mix(new Uint8Array(st.f[k].buffer, st.f[k].byteOffset, st.f[k].byteLength));
   mix(new Uint8Array(st.cohorts.buffer));
+  mix(new Uint8Array(st.religion.buffer));
   mix(new Uint8Array(st.regionOwner.buffer));
   for (const k of Object.keys(st.rng).sort()) mix(new Uint8Array(st.rng[k].buffer));
   mix(enc.encode(JSON.stringify(st.events)));

@@ -1,9 +1,10 @@
 // Simulation: owns a WorldState and advances it through a fixed, documented update order.
 //
 // Time-step architecture (see docs/DESIGN.md §4). The clock is an integer day. Systems run on calendar boundaries:
-//   1 Jan/Apr/Jul/Oct  : economy (quarterly: oil price, TFP, cycle, inflation, debt) -> chronicle (quarterly)
+//   1 Jan/Apr/Jul/Oct  : economy (quarterly: oil price, TFP, cycle, inflation, debt) -> politics (quarterly)
+//                        -> chronicle (quarterly)
 //   every 1 Jan        : demography (cohort-component step + transition) -> economy (yearly structure)
-//                        -> chronicle (yearly) -> history record
+//                        -> religion (secularisation) -> chronicle (yearly) -> history record
 // On 1 January the economy's quarter runs before demography, so both read the population of the year just ended.
 // Order within a boundary is fixed so each system reads a consistent state. Days between boundaries have no
 // scheduled work in Phase 1, so advancing jumps from boundary to boundary (cost is independent of day count).
@@ -15,9 +16,11 @@ import { createState, totalPop, hashState, HIST_FIELDS, type WorldState } from '
 import { initDemography, initTransitionResiduals, demographyYearly } from './systems/demography';
 import { initEconomy, initEconomyResiduals, economyQuarterly, economyYearly } from './systems/economy';
 import { buildTrade, type TradeNet } from './systems/trade';
+import { initReligion, religionYearly } from './systems/religion';
+import { initPolitics, politicsQuarterly } from './systems/politics';
 import { chronicleQuarterly, chronicleYearly } from './systems/chronicle';
 
-export const RNG_STREAMS = ['economy', 'commodity'] as const;
+export const RNG_STREAMS = ['economy', 'commodity', 'politics'] as const;
 
 export interface SimConfig { seed: number; startDate?: string; params?: Partial<Params> }
 
@@ -40,7 +43,9 @@ export class Simulation {
     initTransitionResiduals(this.st, baseline);
     initEconomyResiduals(this.st, baseline);
     this.trade = buildTrade(baseline, this.st.f.gdp, this.params);
+    initReligion(this.st, baseline);
     this.reseed(this.st.seed);
+    initPolitics(this.st, baseline, this.params, this.rngs.politics);
     chronicleYearly(this.st); // establishes milestone levels at t0 without emitting
     this.recordHistory();
   }
@@ -73,11 +78,13 @@ export class Simulation {
     const st = this.st, p = this.params;
     if ((m - 1) % 3 === 0) {
       economyQuarterly(st, p, this.rngs.economy, this.rngs.commodity, this.trade, (c, x) => st.events.push({ d: st.day, k: 'sovereign_default', c, v: x.debtRatio, x }));
+      politicsQuarterly(st, p, this.rngs.politics, this.trade);
       chronicleQuarterly(st);
     }
     if (m === 1) {
       demographyYearly(st, this.baseline, p);
       economyYearly(st, this.baseline, p, this.trade);
+      religionYearly(st, this.baseline, p);
       chronicleYearly(st);
       this.recordHistory();
     }

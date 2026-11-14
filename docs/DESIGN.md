@@ -17,14 +17,17 @@ Sections marked **[implemented]** describe running code; **[design]** describes 
 | Backtest 2000→2023 with naive benchmarks, ensemble coverage, sensitivity analysis | implemented (`docs/BACKTEST.md`) |
 | Military capital stock (perpetual inventory of spending) | implemented (no conflict use yet) |
 | Chronicle/news events carrying their causal inputs | implemented |
-| Observer UI: map with 19 modes, time controls, country inspector with population pyramid, world panel, news feed | implemented |
-| Domestic politics, factions, elections, regime change | design only (Phase 3) |
+| Observer UI: map with 27 modes, time controls, country inspector with population pyramid, world panel, news feed | implemented |
+| Religion: 31 denominations/sects per country, secularisation, fractionalisation and polarisation | implemented (Phase 3, see §3.3) |
+| Domestic politics: democracy index and regime, approval, legitimacy, unrest, elections, coups, uprisings, regime change | implemented, aggregate level (Phase 3, see §3.4); political actors/factions still design |
 | Diplomacy, alliances, organizations, sanctions | design only (Phase 3) |
 | Conflict and warfare, territorial change | design only (Phase 4) — data structure for territorial change exists |
 | Technology, environment, culture/ideology | design only (Phase 5) |
 
-Nothing in the political, diplomatic or military columns of the UI is decided by the simulation yet. Government form and
-WGI governance scores are static baseline data in Phase 1, and the UI labels them as such.
+Regime, democracy, approval, legitimacy, unrest and religion now evolve in the simulation. Diplomacy and the military
+are not decided by the simulation yet. The constitutional form (Wikidata) and WGI governance scores remain static
+baseline data, and the UI labels them as such. Governing-party orientation has no open data source and is drawn at the
+start; the UI marks it "drawn".
 
 ---
 
@@ -173,25 +176,75 @@ parameter, with its source or the word "assumption", is in `src/engine/params.ts
 share of GDP (no reserves or depletion); frontier growth is exogenous; fiscal reaction and default thresholds stand
 in for decisions that Phase 3 politics will make.
 
-### 3.3 Domestic politics [design, Phase 3]
+### 3.3 Religion [implemented, Phase 3]
 
-* **Actors** with power weights `w_a` (from institutions: seats, control of security forces, wealth), ideal points
-  `x_a` on 4–6 policy dimensions (redistribution, openness, security, centralisation, religion-state, …), risk
-  tolerance, beliefs.
-* **Policy choice** by the executive: maximise its utility subject to institutional veto players (Tsebelis): a policy
-  change passes only if every veto player prefers it to the status quo; magnitudes per period are capped
-  (institutional inertia). Bounded rationality: evaluate a handful of candidate moves (status quo ± step on each
-  dimension, plus pre-defined crisis responses), not a full optimisation; choose by logit (softmax) with temperature
-  reflecting institutional quality and information.
-* **Legitimacy / support** per group: f(material conditions vs. expectations, policy distance, repression, identity,
-  performance memory with decay). Elections: party vote shares from group support with district/proportional rules.
-* **Instability** as competing hazard rates (coup, mass protest, insurgency, constitutional breakdown) driven by
-  identifiable variables: e.g. coup hazard rises with military autonomy, recent coups, economic contraction and low
-  regime legitimacy — calibrated to Powell & Thyne coup data, not to fixed thresholds. Outcomes are resolved by the
-  balance of power among actors, so "economic crisis" does not automatically mean "revolution".
-* Government collapse changes the actor configuration; the state (borders, bureaucracy, debt) persists.
+Each country holds population shares over the World Religion Project's 31 categories: Catholic, Protestant, Orthodox,
+Anglican, other Christian; Sunni, Shia, Ibadi, Alawite, Ahmadiyya, Nation of Islam, other Muslim; Orthodox,
+Conservative, Reform and other Jewish; Mahayana, Theravada, other Buddhist; Hindu, Sikh, Jain, Shinto, Taoist,
+Confucian, Baha'i, Zoroastrian, syncretic, animist/folk, other, non-religious. Yearly:
 
-### 3.4 Diplomacy [design, Phase 3]
+```
+secularisation   ds/dt = r·s·(1 − s/K)   s = non-religious share; r, K fitted by least squares on within-country WRP
+                 changes over the 15 years before the WRP year (2023 baseline: 1995→2010, r = 0.030, K = 0.29;
+                 2000 baseline: 1985→2000, r = 0.029, K = 0.20). Countries already above K are not pushed down.
+                 Religious groups lose proportionally, so each country's denominational mix is preserved.
+indices          fractionalisation F = 1 − Σ s²;  polarisation RQ = 4 Σ s²(1 − s) (Montalvo & Reynal-Querol 2005)
+```
+
+Population change carries the composition: world shares shift as countries grow at different rates (Islam reaches
+parity with Christianity around 2100 in seed 1, the direction Pew's projections also show). Religion enters politics
+through polarisation, which raises unrest and uprising risk (§3.4). It is a structural property; the model gives no
+religion its own behaviour.
+
+**Limitations:** WRP ends in 2010 (simulated forward from there), and its quality varies by country (reliability is
+shown in the UI). Within-country fertility and migration do not differ by religion, and conversion only happens into
+and out of non-religion. State religion policy and post-communist religious revival are not modelled. An earlier
+version used an income cross-section instead of the panel fit and made the world *less* secular over time, which is
+why the panel fit is used.
+
+### 3.4 Domestic politics [implemented at aggregate level, Phase 3]
+
+Quarterly, per country (`systems/politics.ts`; every weight is in `params.ts` with its source or "assumption"):
+
+```
+approval   → 0.5 + 1.5·(growth surprise) − 0.01·Δmisery − 0.015·max(0, years in office − 2) + noise    (economic voting)
+legitimacy → baseline (WGI political stability) + 0.6·(remembered approval − 0.5) + 0.3·Δdemocracy
+unrest     → logit⁻¹( logit(baseline) + 0.06·Δmisery + 3·(0.5 − approval) + 3·Δlegitimacy loss
+                      + 4·Δreligious polarisation + 8·Δyouth share )                    each relative to the baseline
+elections  every 4 years in electoral regimes; incumbent survives with p = logistic(6(approval − ½) + 4(1 − demo) − 0.3·terms)
+coups      h = 0.35·logistic(3(1 − demo) + 2·unrest + 0.5·coup memory + 0.8·recession − 2·legitimacy − 0.8·ln(income/10k) + c)
+           c solved at t0 so the world total is 3 attempts / year; success ≈ 50%; a success brings military rule,
+           democracy × 0.6 and an output loss
+uprisings  while unrest > 0.5: h ∝ (unrest − 0.5)·(1.5 − legitimacy)·e^(1.5(polarisation − 0.5)); outcome is a
+           democratic revolution, an authoritarian overthrow or (in democracies) the fall of the government
+democracy  drift toward partners' average (diffusion), pull toward the country's own baseline (institutional
+           persistence, τ = 30 y), noise, fat-tailed episodes (18%/yr, sd 0.06), erosion by popular incumbents in
+           weak electoral regimes (aggrandisement), and a recovery when they lose elections (U-turns)
+regime     categories from the democracy index with hysteresis (democratise > 0.50, autocratise < 0.46)
+policy     governing orientation moves revenue/GDP ±10% of its baseline; unrest above baseline costs output
+```
+
+**Calibration against base rates** (2024-2046, 8 seeds; V-Dem figures computed in the data build):
+
+| Quantity | Simulated | Observed |
+|---|---|---|
+| coup attempts per year, world | ≈ 2.5 (2.4 in the 2000-2023 backtest) | ≈ 3 (Powell & Thyne, order of magnitude since 2000) |
+| democracy/autocracy crossings per country-year | 0.015 | 0.0195 with the same index rule on V-Dem 2001-2023 (0.025 with RoW's extra criteria) |
+| democratisations vs autocratisations | 1.1 vs 1.2 per year | 55 vs 49 over 2001-2023 |
+| incumbent defeat in elections in democracies | 34% | no single comparable figure; order of magnitude of incumbent-party turnover |
+| democracy index 2023 (backtest) | error 0.09-0.10, bias +0.04, 51% inside the 10-90% band | persistence forecast error 0.06 |
+
+The model does **not** beat simple persistence for democracy over 23 years. Its pro-democratic bias comes from
+diffusion (switching diffusion off removes it), consistent with 2000-2023 being a period of autocratisation that
+diffusion models miss. The coup hazard saturates because an exponential version produced runaway coup traps (the
+Central African Republic had 117 coups in 50 simulated years); coups now concentrate where they occur in reality
+(Sahel, Central Africa) and become rarer as countries grow richer.
+
+**Still design (Phase 3b):** explicit political actors (executive, legislature blocs, military, business, regional and
+religious elites, opposition) with ideal points, veto players and bounded-rational policy choice; party systems;
+the "why did X do Y" inspector. The aggregate model above is the substrate they will replace.
+
+### 3.5 Diplomacy [design, Phase 3b]
 
 * Multi-dimensional dyadic relations (trade dependence, threat perception, trust, ideological distance, grievances,
   alliance obligations), each with its own update rule and decay; historical grievances decay but leave a floor.
@@ -201,7 +254,7 @@ in for decisions that Phase 3 politics will make.
 * Treaties are bargaining outcomes (Nash bargaining over a surplus with outside options); obligations are stored and
   breaking them costs trust with all observers.
 
-### 3.5 Conflict [design, Phase 4]
+### 3.6 Conflict [design, Phase 4]
 
 * **Onset** from the bargaining model of war (Fearon 1995): war becomes possible when perceived military balance and
   stakes differ between sides (private information, commitment problems, indivisible stakes) beyond the expected cost
@@ -214,7 +267,7 @@ in for decisions that Phase 3 politics will make.
 * **Nuclear**: deterrence enters the expected cost term; escalation ladder with explicit thresholds and probabilities;
   use triggers catastrophic, modelled humanitarian and economic consequences.
 
-### 3.6 Technology, environment, society [design, Phase 5]
+### 3.7 Technology, environment, society [design, Phase 5]
 
 * Technology: knowledge stocks per domain (energy, computing/AI, manufacturing, agri/bio, transport, comms, medicine,
   aerospace) accumulated from R&D × researchers, diffusing along trade and alliance links with lags; domain stocks
@@ -225,7 +278,7 @@ in for decisions that Phase 3 politics will make.
 * Society: distributions (not scalars) of attitudes per cohort; generational replacement drives slow change; material
   conditions, education, and media environment shift the distribution.
 
-### 3.7 Optional narrative layer
+### 3.8 Optional narrative layer
 
 An LLM may later turn recorded events into prose. It receives only event records and state values and cannot write
 state. Phase 1 already renders the news feed from event records with templates (`src/engine/describe.ts`).
@@ -239,9 +292,10 @@ from calendar boundary to boundary:
 
 ```
 1 Jan / Apr / Jul / Oct      economy.quarterly (oil price → TFP → domestic cycles → gaps → output, prices, debt)
-                             → chronicle.quarterly
+                             → politics.quarterly (approval → legitimacy → unrest → elections → coups → uprisings
+                               → regime categories) → chronicle.quarterly
 every 1 Jan                  demography.yearly (cohort step → migration → transition) → economy.yearly
-                             → chronicle.yearly → history.record
+                             → religion.yearly (secularisation, indices) → chronicle.yearly → history.record
 ```
 
 Phase 3/4 will add a **daily phase** (active conflicts only) and an **event queue** (priority queue keyed by day) for
@@ -267,11 +321,11 @@ Measured with `npm run bench` (Node 22, one core of a 2.1 GHz Xeon):
 
 | Measurement | Result |
 |---|---|
-| 300 simulated years, 200 countries | 1.56 s (5.2 ms / year); Phase 1 was 0.84 ms / year |
-| per year: demography / economy / chronicle | 3.4 / 0.9 / 0.3 ms |
-| scaling: 200 / 400 / 800 / 1600 entities | 5.3 / 9.9 / 21.7 / 49.7 ms per year (≈ linear) |
-| save (300 years of history and 58k events) | 228 ms, 9.5 MB JSON |
-| load / full replay of 300 years | 143 ms / 1.5 s |
+| 300 simulated years, 200 countries | 2.2 s (7.3 ms / year); Phase 1 was 0.84, Phase 2 5.2 ms / year |
+| per year: demography / economy / politics / religion / chronicle | 4.1 / 1.0 / 1.2 / 0.03 / 0.3 ms |
+| scaling: 200 / 400 / 800 / 1600 entities | 6.9 / 17.6 / 26.9 / 51.5 ms per year (≈ linear) |
+| save (300 years of history and 76k events) | 308 ms, 14.3 MB JSON |
+| load / full replay of 300 years | 216 ms / 2.1 s |
 | determinism, 3 runs | identical hashes |
 
 Demography dominates: each year every country re-solves two Siler parameters per sex (warm-started Newton with
@@ -325,7 +379,8 @@ licence compatibility to check), terrain/elevation rasters (Natural Earth / ETOP
 |---|---|---|
 | 1 ✅ | Baseline data pipeline, engine core, demography & economy prototypes, save/load/rewind/branch, map UI | invariants + reproducibility tests green; UI drives the worker |
 | 2 ✅ | Single-year age × sex cohorts; Siler life tables; sectors; oil price; inflation; procyclical investment; gravity trade network; 2000 baseline and backtest | backtest 2000→2023 reported per region with naive benchmarks and sensitivity (`docs/BACKTEST.md`). Deferred: resource reserves and depletion, exchange rates, bilateral trade data |
-| 3 | Political actors, institutions, elections, legitimacy, unrest; diplomacy graph, treaties, sanctions, organisations; decision inspector ("why did X do Y") | distribution of government changes / regime transitions vs. historical base rates (Archigos, Powell & Thyne) |
+| 3 (part) ✅ | Religion (31 denominations, secularisation, polarisation); aggregate domestic politics: democracy, regimes, approval, legitimacy, unrest, elections, coups, uprisings | coup and regime-transition rates vs. Powell & Thyne and V-Dem 2001-2023 (§3.4); democracy in the backtest |
+| 3b | Political actors and veto players; party systems; diplomacy graph, alliances (COW/ATOP), treaties, sanctions, organisations; decision inspector ("why did X do Y") | alliance formation and sanction rates vs. ATOP/GSDB; government changes vs. Archigos |
 | 4 | Military forces, conflict onset/bargaining, front-line model, occupation, settlements, territorial change, nuclear deterrence | conflict onset and duration distributions vs. UCDP/COW across many seeds |
 | 5 | Technology domains & diffusion; environment & disasters; migration push/pull; ideology & society | sensitivity analysis of long-run outcomes |
 | 6 | Calibration (simulated method of moments over many seeds), pathology hunting, profiling-driven optimisation; Rust/WASM core if profiling justifies | 500-year runs without degenerate outcomes; ensemble statistics |
@@ -359,3 +414,9 @@ licence compatibility to check), terrain/elevation rasters (Natural Earth / ETOP
 10. **Growth parameters.** The backtest overshoots real GDP growth by ~12-15% (median) with literature-based defaults;
    halving catch-up speed or frontier growth removes the bias (sensitivity table). Part of the overshoot is the absence
    of crises; the rest is a calibration question for Phase 6, deliberately not tuned on this backtest.
+11. **Political parameters are weakly identified.** The politics weights reproduce aggregate base rates but many
+   combinations would; the backtest shows the model does not beat persistence for democracy. Political outcomes
+   should be read as plausible distributions, never as forecasts for a given country.
+12. **Religion data age and definitions.** The composition is from 2010 (WRP) and definitions differ from Pew's
+   (WRP counts China as 42% syncretic and 33% non-religious; Pew counts 52% unaffiliated), so the world
+   non-religious share starts at ~10% rather than Pew's ~24%.

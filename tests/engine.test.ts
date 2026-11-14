@@ -7,6 +7,7 @@ import { saveWorld, loadWorld } from '../src/engine/save';
 import { FIELDS, totalPop, cloneState } from '../src/engine/state';
 import { demographyYearly, solveSiler, lifeExpectancy, under5 } from '../src/engine/systems/demography';
 import { economyQuarterly, interestRate } from '../src/engine/systems/economy';
+import { coupHazard } from '../src/engine/systems/politics';
 
 const b = loadBaseline();
 const years = (sim: Simulation, n: number) => sim.advanceTo(addMonths(sim.st.day, 12 * n));
@@ -100,6 +101,37 @@ describe('reproducibility', () => {
     years(child, 5);
     child.rewindTo(d); // replay must re-apply the branch point
     expect(child.hash()).toBe(h);
+  });
+});
+
+describe('religion and politics', () => {
+  it('religion shares are valid at baseline and after 150 years', () => {
+    const sim = new Simulation(b, { seed: 4 });
+    const check = () => {
+      const R = sim.st.nRel;
+      for (let c = 0; c < sim.st.n; c++) {
+        let s = 0;
+        for (let r = 0; r < R; r++) { const v = sim.st.religion[c * R + r]; expect(v).toBeGreaterThanOrEqual(0); s += v; }
+        expect(s).toBeCloseTo(1, 9);
+      }
+    };
+    check(); years(sim, 150); check();
+  });
+  it('coup hazard is calibrated so world attempts at baseline equal the target rate', () => {
+    const sim = new Simulation(b, { seed: 1 });
+    let tot = 0;
+    for (let c = 0; c < sim.st.n; c++) tot += coupHazard(sim.st, sim.params, c);
+    expect(tot).toBeCloseTo(sim.params.politics.coup.attemptsPerYear, 3);
+  });
+  it('political variables stay in range over 300 years', () => {
+    const sim = new Simulation(b, { seed: 6 });
+    years(sim, 300);
+    const f = sim.st.f;
+    for (let c = 0; c < sim.st.n; c++) {
+      for (const k of ['demo', 'approval', 'legit', 'unrest'] as const) { expect(f[k][c]).toBeGreaterThanOrEqual(0); expect(f[k][c]).toBeLessThanOrEqual(1); }
+      expect([0, 1, 2, 3]).toContain(f.regime[c]);
+      expect(Math.abs(f.ideology[c])).toBeLessThanOrEqual(1);
+    }
   });
 });
 

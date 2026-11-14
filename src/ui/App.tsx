@@ -8,9 +8,8 @@ import { MapView, type MapRegion } from './MapView';
 import { CountryPanel } from './CountryPanel';
 import { WorldPanel } from './WorldPanel';
 import { EventFeed } from './EventFeed';
-import { MAP_MODES, GOV_COLORS, GOV_LABELS, makeScale, politicalColor } from './mapModes';
+import { MAP_MODES, categoryOf, makeScale, politicalColor } from './mapModes';
 import { putSave, getSave, downloadText } from './storage';
-import { fmtNum } from './format';
 
 const SPEEDS: [string, number][] = [['1 day/s', 1], ['1 week/s', 7], ['1 month/s', 30], ['1 year/s', 365], ['10 years/s', 3652], ['50 years/s', 18262]];
 const randomSeed = () => Math.floor(Math.random() * 1e9);
@@ -63,11 +62,11 @@ export function App() {
   }, [baseline]);
 
   const mode = MAP_MODES.find((m) => m.id === modeId)!;
-  const scale = useMemo(() => (frame && mode.metric ? makeScale(mode, frame.metrics[mode.metric]) : null), [frame, mode]);
+  const scale = useMemo(() => (frame && mode.metric && mode.kind !== 'categorical' ? makeScale(mode, frame.metrics[mode.metric]) : null), [frame, mode]);
   const fillFor = useCallback((owner: number) => {
     if (owner < 0) return '#2a2f3a';
     if (mode.kind === 'political') return politicalColor(owner);
-    if (mode.id === 'government') return GOV_COLORS[baseline!.countries[owner].government.form];
+    if (mode.kind === 'categorical') return categoryOf(mode, owner, frame!.metrics, baseline!)[1];
     return scale && frame ? scale.color(frame.metrics[mode.metric!][owner]) : '#333';
   }, [mode, scale, frame, baseline]);
   const weight = useCallback((c: number) => frame?.metrics.pop[c] ?? 0, [frame]);
@@ -77,7 +76,7 @@ export function App() {
   }
 
   const { y } = civilFromDays(frame.day);
-  const hoverValue = hover && hover.owner >= 0 && mode.metric ? mode.fmt!(frame.metrics[mode.metric][hover.owner]) : null;
+  const hoverValue = hover && hover.owner >= 0 ? (mode.kind === 'categorical' ? categoryOf(mode, hover.owner, frame.metrics, baseline)[0] : mode.metric ? mode.fmt!(frame.metrics[mode.metric][hover.owner]) : null) : null;
 
   return (
     <div className="app">
@@ -126,8 +125,8 @@ export function App() {
             {scale && mode.fmt && (
               <span className="ramp"><span>{mode.fmt(scale.lo)}</span><i style={{ background: `linear-gradient(90deg, ${scale.stops.join(',')})` }} /><span>{mode.fmt(scale.hi)}</span></span>
             )}
-            {mode.id === 'government' && (
-              <span className="cats">{Object.entries(GOV_LABELS).map(([k, l]) => <span key={k}><i style={{ background: GOV_COLORS[k as keyof typeof GOV_COLORS] }} />{l}</span>)}</span>
+            {mode.kind === 'categorical' && (
+              <span className="cats">{[...new Map(regions.filter((r) => r.owner >= 0).map((r) => categoryOf(mode, r.owner, frame.metrics, baseline))).entries()].sort().map(([l, col]) => <span key={l}><i style={{ background: col }} />{l}</span>)}</span>
             )}
             {mode.note && <span className="muted note">{mode.note}</span>}
           </div>
@@ -140,7 +139,7 @@ export function App() {
           <footer className="foot">
             Seed {frame.seed}{frame.branches.length ? ` · ${frame.branches.length} branch point(s)` : ''} · baseline {baseline.meta.referenceYear} data ·{' '}
             {frame.perf.msPerSimYear ? `${frame.perf.msPerSimYear.toFixed(1)} ms per simulated year · ` : ''}
-            {fmtNum(frame.world.events)} events
+            {frame.world.events.toLocaleString()} events
           </footer>
         </aside>
       </main>

@@ -1,4 +1,4 @@
-import type { GovForm } from '../engine/types';
+import type { Baseline, GovForm } from '../engine/types';
 import { fmtNum, fmtPct, fmtUsd } from './format';
 
 export interface MapMode {
@@ -14,7 +14,15 @@ export interface MapMode {
 
 export const MAP_MODES: MapMode[] = [
   { id: 'political', label: 'Political', group: 'Politics', kind: 'political' },
-  { id: 'government', label: 'Government form', group: 'Politics', kind: 'categorical', note: 'Baseline classification from Wikidata (static in Phase 1).' },
+  { id: 'regime', label: 'Regime', group: 'Politics', kind: 'categorical', metric: 'regime', note: 'Simulated; starts from V-Dem Regimes of the World.' },
+  { id: 'democracy', label: 'Democracy index', group: 'Politics', kind: 'sequential', metric: 'demo', fmt: (v) => v.toFixed(2), note: 'Simulated; starts from the V-Dem electoral democracy index.' },
+  { id: 'approval', label: 'Government approval', group: 'Politics', kind: 'sequential', metric: 'approval', fmt: (v) => fmtPct(v, 0), note: 'Model variable (no polling data): starts at 50% everywhere.' },
+  { id: 'unrest', label: 'Unrest', group: 'Politics', kind: 'sequential', metric: 'unrest', fmt: (v) => fmtPct(v, 0) },
+  { id: 'coupRisk', label: 'Coup risk', group: 'Politics', kind: 'sequential', metric: 'coupRisk', log: true, fmt: (v) => fmtPct(v, 1), note: 'Annual probability of a coup attempt.' },
+  { id: 'government', label: 'Constitutional form', group: 'Politics', kind: 'categorical', note: 'Baseline classification from Wikidata (static).' },
+  { id: 'religion', label: 'Largest denomination', group: 'Religion', kind: 'categorical', metric: 'majorRel', note: 'World Religion Project 2010, evolved by secularisation and population change.' },
+  { id: 'relPolar', label: 'Religious polarisation', group: 'Religion', kind: 'sequential', metric: 'relPolar', fmt: (v) => v.toFixed(2), note: 'Montalvo–Reynal-Querol index over denominations (1 = two equal groups).' },
+  { id: 'nonrel', label: 'Non-religious', group: 'Religion', kind: 'sequential', metric: 'nonrel', fmt: (v) => fmtPct(v, 0) },
   { id: 'effectiveness', label: 'Govt effectiveness (WGI)', group: 'Politics', kind: 'diverging', metric: 'effectiveness', fmt: (v) => v.toFixed(2), note: 'World Bank WGI estimate, static in Phase 1.' },
   { id: 'voice', label: 'Voice & accountability (WGI)', group: 'Politics', kind: 'diverging', metric: 'voice', fmt: (v) => v.toFixed(2), note: 'World Bank WGI estimate, static in Phase 1.' },
   { id: 'pop', label: 'Population', group: 'Demography', kind: 'sequential', metric: 'pop', log: true, fmt: (v) => fmtNum(v) },
@@ -45,6 +53,27 @@ export const GOV_LABELS: Record<GovForm, string> = {
   military: 'Military government', theocracy: 'Theocracy', republic_other: 'Republic (type unclassified)',
   monarchy_other: 'Monarchy (type unclassified)', unclassified: 'Unclassified',
 };
+
+export const REGIME_LABELS = ['Closed autocracy', 'Electoral autocracy', 'Electoral democracy', 'Liberal democracy'];
+const REGIME_COLORS = ['#b2182b', '#ef8a62', '#67a9cf', '#2166ac'];
+
+/** Colours per religion category, by family hue (Christianity blues, Islam greens, Judaism gold, …). */
+const RELIGION_COLORS: Record<string, string> = {
+  Catholic: '#4e79a7', Protestant: '#7aa6d6', 'Orthodox Christian': '#8e6bbf', Anglican: '#a9c4e8', 'Other Christian': '#5f7fa8',
+  Sunni: '#3d9a50', Shia: '#9bd36a', Ibadi: '#2f7a5e', Alawite: '#6fbf8f', Ahmadiyya: '#b5d99c', 'Nation of Islam': '#4f8f3c', 'Other Muslim': '#5fae63',
+  'Orthodox Jewish': '#e0b33f', 'Conservative Jewish': '#edc96a', 'Reform Jewish': '#f3dc94', 'Other Jewish': '#d4a62a',
+  Mahayana: '#f28e2b', Theravada: '#ffb15e', 'Other Buddhist': '#e07b1f', Hindu: '#e15759', Sikh: '#ff9d9a', Jain: '#c75d7a',
+  Shinto: '#d37295', Taoist: '#b07aa1', Confucian: '#9c755f', "Baha'i": '#bab0ac', Zoroastrian: '#d4a6c8', Syncretic: '#c49c94',
+  'Animist / folk': '#8c6d31', 'Other religion': '#7f7f7f', 'Non-religious': '#c7c7c7',
+};
+
+/** Category label and colour of a country in a categorical map mode. */
+export function categoryOf(mode: MapMode, owner: number, metrics: Record<string, number[]>, b: Baseline): [string, string] {
+  if (mode.id === 'government') { const g = b.countries[owner].government.form; return [GOV_LABELS[g], GOV_COLORS[g]]; }
+  if (mode.id === 'regime') { const r = metrics.regime[owner]; return [REGIME_LABELS[r], REGIME_COLORS[r]]; }
+  const label = b.meta.religions[metrics.majorRel[owner]].label;
+  return [label, RELIGION_COLORS[label] ?? '#888'];
+}
 
 // Viridis-like sequential ramp and a blue-grey-red diverging ramp (perceptually ordered, colour-blind safe).
 const SEQ = ['#440154', '#3b528b', '#21918c', '#5ec962', '#fde725'];
