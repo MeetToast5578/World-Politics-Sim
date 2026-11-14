@@ -13,7 +13,7 @@ interface Props {
   fillFor: (owner: number) => string; // owner -1 => unowned
   selected: number | null;
   onSelect: (c: number | null) => void;
-  onHover: (r: MapRegion | null) => void;
+  onHover: (r: MapRegion | null, x?: number, y?: number) => void; // x, y: cursor position within the map
   version: number;                    // bump to force redraw
 }
 
@@ -26,6 +26,7 @@ export function MapView({ topo, regions, fillFor, selected, onSelect, onHover, v
   const [view, setView] = useState<View>({ k: 1, x: 0, y: 0 });
   const paths = useRef<{ regions: Path2D[]; graticule: Path2D; sphere: Path2D } | null>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const [hovered, setHovered] = useState(-1);
 
   useEffect(() => {
     const ro = new ResizeObserver(([e]) => setSize({ w: Math.max(200, e.contentRect.width), h: Math.max(150, e.contentRect.height) }));
@@ -51,19 +52,24 @@ export function MapView({ topo, regions, fillFor, selected, onSelect, onHover, v
     cv.width = size.w * dpr; cv.height = size.h * dpr;
     const ctx = cv.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#0d1117';
-    ctx.fillRect(0, 0, size.w, size.h);
+    const css = getComputedStyle(cv);
+    ctx.clearRect(0, 0, size.w, size.h);
     ctx.setTransform(dpr * view.k, 0, 0, dpr * view.k, dpr * view.x, dpr * view.y);
-    ctx.fillStyle = '#16213a'; ctx.fill(P.sphere);
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 0.5 / view.k; ctx.stroke(P.graticule);
-    regions.forEach((r, i) => { ctx.fillStyle = fillFor(r.owner); ctx.fill(P.regions[i]); });
-    ctx.strokeStyle = 'rgba(13,17,23,0.85)'; ctx.lineWidth = 0.4 / view.k;
+    ctx.fillStyle = css.getPropertyValue('--sea') || '#d6e6ee'; ctx.fill(P.sphere);
+    ctx.strokeStyle = 'rgba(31,47,58,0.07)'; ctx.lineWidth = 0.6 / view.k; ctx.stroke(P.graticule);
+    regions.forEach((r, i) => { ctx.fillStyle = r.owner < 0 ? '#f3f5f6' : fillFor(r.owner); ctx.fill(P.regions[i]); });
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 0.6 / view.k;
     P.regions.forEach((p) => ctx.stroke(p));
+    const ink = css.getPropertyValue('--ink') || '#1f2f3a';
+    if (hovered >= 0 && hovered !== selected) {
+      ctx.strokeStyle = ink; ctx.lineWidth = 1 / view.k;
+      regions.forEach((r, i) => { if (r.owner === hovered) ctx.stroke(P.regions[i]); });
+    }
     if (selected !== null) {
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.6 / view.k;
+      ctx.strokeStyle = ink; ctx.lineWidth = 2.2 / view.k;
       regions.forEach((r, i) => { if (r.owner === selected) ctx.stroke(P.regions[i]); });
     }
-  }, [size, view, version, selected, regions, fillFor]);
+  }, [size, view, version, selected, regions, fillFor, hovered]);
 
   const hit = (ev: React.MouseEvent): MapRegion | null => {
     const P = paths.current, cv = canvas.current;
@@ -104,18 +110,22 @@ export function MapView({ topo, regions, fillFor, selected, onSelect, onHover, v
             if (Math.abs(dx) + Math.abs(dy) > 2) d.moved = true;
             d.x = e.clientX; d.y = e.clientY;
             setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
-          } else onHover(hit(e));
+          } else {
+            const r = hit(e), rect = canvas.current!.getBoundingClientRect();
+            setHovered(r ? r.owner : -1);
+            onHover(r, e.clientX - rect.left, e.clientY - rect.top);
+          }
         }}
         onMouseUp={(e) => {
           if (drag.current && !drag.current.moved) { const r = hit(e); onSelect(r && r.owner >= 0 ? r.owner : null); }
           drag.current = null;
         }}
-        onMouseLeave={() => { drag.current = null; onHover(null); }}
+        onMouseLeave={() => { drag.current = null; setHovered(-1); onHover(null); }}
       />
       <div className="map-zoom">
         <button onClick={() => zoomAt(size.w / 2, size.h / 2, 1.5)} aria-label="Zoom in">+</button>
         <button onClick={() => zoomAt(size.w / 2, size.h / 2, 1 / 1.5)} aria-label="Zoom out">−</button>
-        <button onClick={() => setView({ k: 1, x: 0, y: 0 })} aria-label="Reset view">⟲</button>
+        <button onClick={() => setView({ k: 1, x: 0, y: 0 })} aria-label="Show the whole world" title="Show the whole world">⤢</button>
       </div>
     </div>
   );

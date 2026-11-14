@@ -15,6 +15,7 @@
     "backtest": "tsx src/headless/backtest.ts"
   },
   "dependencies": {
+    "@fontsource/atkinson-hyperlegible-next": "^5.2.7",
     "d3-geo": "^3.1.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
