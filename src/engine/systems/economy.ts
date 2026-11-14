@@ -1,7 +1,7 @@
 // Economy (quarterly): Cobb-Douglas production Y = A K^α L^(1-α) e^cycle, all in constant 2023 USD (annualised).
 //  - capital accumulates from the observed investment share, depreciates at δ
 //  - TFP grows at the frontier rate plus catch-up proportional to the log gap, scaled by absorptive capacity (institutions)
-//  - a per-country AR(1) business cycle, volatility calibrated to 2000-2019 real GDP growth
+//  - a per-country AR(1) business cycle (with a common world shock), volatility calibrated to 2000-2019 real GDP growth
 //  - unemployment moves with the cycle (Okun); labour = working-age pop × participation × (1 - u)
 //  - public debt follows the budget identity with a Bohn-type fiscal reaction (stand-in for Phase 3 politics),
 //    and is restructured (sovereign default) when interest payments exceed a share of revenue
@@ -65,12 +65,14 @@ export function economyQuarterly(st: WorldState, p: Params, rng: Rng, onDefault?
   const { f, n } = st;
   let lnAf = -Infinity;
   for (let c = 0; c < n; c++) if (labour(st, c) >= p.frontierMinLabor) lnAf = Math.max(lnAf, Math.log(f.A[c]));
+  // One world shock per quarter, shared by all countries: lets synchronised global downturns emerge.
+  const world = rng.normal(), wg = Math.sqrt(p.globalShockShare), wi = Math.sqrt(1 - p.globalShockShare);
   for (let c = 0; c < n; c++) {
     const lnA = Math.log(f.A[c]);
     const gap = Math.max(0, lnAf - lnA);
     f.A[c] = Math.exp(lnA + (p.frontierGrowth + p.catchUp * f.absorb[c] * gap) * DT);
     // shock drawn for every country in index order, so the draw sequence never depends on state
-    f.cycle[c] = p.cycleRho * f.cycle[c] + f.cycleSd[c] * rng.normal();
+    f.cycle[c] = p.cycleRho * f.cycle[c] + f.cycleSd[c] * (wg * world + wi * rng.normal());
     f.unemp[c] = Math.max(0.5, f.unempStar[c] - p.okun * f.cycle[c] * 100);
     const Yprev = f.gdp[c];
     const Y = f.A[c] * f.K[c] ** p.alpha * labour(st, c) ** (1 - p.alpha) * Math.exp(f.cycle[c]);

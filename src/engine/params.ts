@@ -31,6 +31,9 @@ export const DEFAULT_PARAMS = {
   frontierMinLabor: 2e6,
   /** Quarterly persistence of the business-cycle component (assumption). */
   cycleRho: 0.8,
+  /** Share of business-cycle innovation variance that is a common world shock. Kose, Otrok & Whiteman (2003) attribute
+   *  roughly 10-40% of output-growth variance to a world factor (higher for advanced economies). Assumption: 0.25. */
+  globalShockShare: 0.25,
   /** Okun coefficient: unemployment-rate change (pp) per 1% output gap. Okun's law estimates ~0.3-0.5. */
   okun: 0.4,
 
