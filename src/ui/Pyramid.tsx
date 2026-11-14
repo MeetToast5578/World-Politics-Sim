@@ -8,20 +8,20 @@ export function Pyramid({ f, m }: { f: number[]; m: number[] }) {
   const total = [...f, ...m].reduce((s, x) => s + x, 0) || 1;
   const W = 260, rowH = 7, H = groups.length * rowH, mid = W / 2;
   return (
-    <div className="chart">
-      <div className="chart-head"><span>Population by age</span><b><span className="male">male</span> · <span className="female">female</span></b></div>
+    <figure className="chart">
+      <figcaption><span>People by age</span><span className="key"><span className="male">Men</span><span className="female">Women</span></span></figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ height: H }} role="img" aria-label="Population pyramid by five-year age group">
         {groups.map((g, i) => {
           const y = H - (i + 1) * rowH, wm = (g.m / max) * (mid - 18), wf = (g.f / max) * (mid - 18);
           return (
             <g key={g.label}>
-              <rect x={mid - 14 - wm} y={y + 0.5} width={wm} height={rowH - 1} fill="var(--male)"><title>{`${g.label}: male ${(100 * g.m / total).toFixed(2)}%`}</title></rect>
-              <rect x={mid + 14} y={y + 0.5} width={wf} height={rowH - 1} fill="var(--female)"><title>{`${g.label}: female ${(100 * g.f / total).toFixed(2)}%`}</title></rect>
+              <rect x={mid - 14 - wm} y={y + 0.5} width={wm} height={rowH - 1} fill="var(--male)"><title>{`${g.label}: men ${(100 * g.m / total).toFixed(2)}%`}</title></rect>
+              <rect x={mid + 14} y={y + 0.5} width={wf} height={rowH - 1} fill="var(--female)"><title>{`${g.label}: women ${(100 * g.f / total).toFixed(2)}%`}</title></rect>
               {i % 4 === 0 && <text x={mid} y={y + rowH - 0.5} textAnchor="middle" fontSize="6.5" fill="var(--muted)">{g.label}</text>}
             </g>
           );
         })}
       </svg>
-    </div>
+    </figure>
   );
 }

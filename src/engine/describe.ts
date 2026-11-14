@@ -1,73 +1,89 @@
-// Renders chronicle events as text. Every sentence is built only from values stored in the event.
+// Renders chronicle events as a plain headline plus a short "why" line. Every word is built only from values stored
+// in the event, so the news can never claim something the simulation did not produce.
 import type { SimEvent } from './state';
 
-const fmtPop = (v: number) => (v >= 1e9 ? `${v / 1e9} billion` : `${v / 1e6} million`);
-const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
+export interface Story { headline: string; why: string }
 
-export function describeEvent(e: SimEvent, name: (c: number) => string): string {
-  const c = e.c >= 0 ? name(e.c) : 'World', x = e.x ?? {};
+const pct = (v: number, d = 0) => `${(v * 100).toFixed(d)}%`;
+const people = (v: number) => (v >= 1e9 ? `${+(v / 1e9).toFixed(1)} billion` : `${+(v / 1e6).toFixed(1)} million`);
+const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
+const relation = (t: number) => (t < -0.5 ? 'deep distrust' : t < 0 ? 'mutual distrust' : t < 0.4 ? 'lukewarm relations' : 'good relations');
+
+export function describeEvent(e: SimEvent, name: (c: number) => string): Story {
+  const c = e.c >= 0 ? name(e.c) : 'World', o = e.o !== undefined && e.o >= 0 ? name(e.o) : '', x = e.x ?? {};
+  const s = (headline: string, why = ''): Story => ({ headline, why });
   switch (e.k) {
     case 'oil_shock':
-      return `World oil price ${e.v! > 0 ? 'surges' : 'collapses'} ${pct(Math.abs(e.v!), 0)} in a year (now ${(x.price * 100).toFixed(0)} on a 2023 = 100 scale).`;
+      return s(`Oil prices ${e.v! > 0 ? 'surge' : 'collapse'} ${pct(Math.abs(e.v!))} in a year`, `The oil price index is now ${(x.price * 100).toFixed(0)} (2023 = 100). Exporters gain, importers pay more.`);
     case 'inflation_high':
-      return `${c}: inflation climbs above 25% (${e.v!.toFixed(1)}%; expected ${x.expected.toFixed(1)}%, oil price index ${(x.oil * 100).toFixed(0)}).`;
+      return s(`Inflation tops 25% in ${c}`, `Prices are rising ${e.v!.toFixed(0)}% a year; people expected ${x.expected.toFixed(0)}%.`);
     case 'inflation_tamed':
-      return `${c} brings inflation back below 10% (${e.v!.toFixed(1)}%; expectations ${x.expected.toFixed(1)}%).`;
+      return s(`${c} gets inflation back under control`, `Inflation is down to ${e.v!.toFixed(1)}%.`);
     case 'recession_start':
-      return `${c} enters recession: second consecutive quarter of contraction (${pct(e.v!)} q/q; output gap ${pct(x.gap ?? x.cycle)} of which domestic ${pct(x.cycle)}, unemployment ${x.unemp.toFixed(1)}%).`;
+      return s(`${c} falls into recession`, `The economy shrank ${pct(-e.v!, 1)} last quarter, the second fall in a row. Unemployment is ${x.unemp.toFixed(1)}%.`);
     case 'recession_end':
-      return `${c} returns to growth after ${e.v} quarters of contraction (unemployment ${x.unemp.toFixed(1)}%).`;
+      return s(`${c}'s economy is growing again`, `After ${e.v} quarters of decline. Unemployment is ${x.unemp.toFixed(1)}%.`);
     case 'pop_above':
-      return `${c}'s population passes ${fmtPop(e.v!)} (fertility ${x.tfr.toFixed(2)}, life expectancy ${x.lifeExp.toFixed(1)}).`;
+      return s(`${c} passes ${people(e.v!)} people`, `Women have ${x.tfr.toFixed(1)} children on average; life expectancy is ${x.lifeExp.toFixed(0)} years.`);
     case 'pop_below':
-      return `${c}'s population falls below ${fmtPop(e.v!)} (fertility ${x.tfr.toFixed(2)}, life expectancy ${x.lifeExp.toFixed(1)}).`;
+      return s(`${c}'s population falls below ${people(e.v!)}`, `Women have ${x.tfr.toFixed(1)} children on average, fewer than needed to replace each generation.`);
     case 'pop_peak':
-      return `${c}'s population peaks at ${(e.v! / 1e6).toFixed(1)} million and begins to decline (fertility ${x.tfr.toFixed(2)}, ${pct(x.old, 0)} aged 65+).`;
+      return s(`${c}'s population starts to shrink`, `It peaked at ${people(e.v!)}. Women have ${x.tfr.toFixed(1)} children on average and ${pct(x.old)} of people are over 65.`);
     case 'debt_above':
-      return `${c}'s public debt exceeds ${pct(e.v!, 0)} of GDP (primary spending ${pct(x.primSpend)} vs revenue ${pct(x.rev)} of GDP).`;
+      return s(`${c}'s government debt passes ${pct(e.v!)} of its economy`, `It spends ${pct(x.primSpend)} of GDP before interest and collects ${pct(x.rev)}.`);
     case 'sovereign_default':
-      return `${c} defaults on its public debt: interest payments reached ${pct(x.burden, 0)} of revenue with debt at ${pct(e.v!, 0)} of GDP. Debt is restructured and output contracts.`;
+      return s(`${c} defaults on its debt`, `Interest payments took ${pct(x.burden)} of government revenue, with debt at ${pct(e.v!)} of GDP. Creditors take losses and the economy contracts.`);
     case 'gdp_rank_up':
-      return `${c} overtakes ${name(e.o!)} and becomes the world's #${e.v} economy at market exchange rates.`;
-    // politics: every sentence cites the state that produced the event
+      return s(`${c} overtakes ${o} as the world's ${ordinal(e.v!)} largest economy`);
     case 'election_won':
-      return `${c}: the incumbent wins re-election (approval ${pct(x.approval, 0)}, democracy index ${x.demo.toFixed(2)}).`;
+      return s(`Government re-elected in ${c}`, `Approval was ${pct(x.approval)}.`);
     case 'election_lost':
-      return `${c}: the government loses the election (approval ${pct(x.approval, 0)}, misery index ${x.misery.toFixed(1)}, growth ${pct(x.growth)}); a new government takes office.`;
+      return s(`Voters throw out the government in ${c}`, `Approval had fallen to ${pct(x.approval)}; growth was ${pct(x.growth, 1)} and the hardship index ${x.misery.toFixed(0)}.`);
     case 'coup':
-      return `${c}: military coup succeeds (unrest ${pct(x.unrest, 0)}, legitimacy ${pct(x.legit, 0)}, democracy index ${x.demo.toFixed(2)}, annual coup risk was ${pct(x.hazard, 0)}).`;
+      return s(`Military seizes power in ${c}`, `Unrest was at ${pct(x.unrest)} and the government had little legitimacy left (${pct(x.legit)}).`);
     case 'coup_failed':
-      return `${c}: coup attempt fails (unrest ${pct(x.unrest, 0)}, legitimacy ${pct(x.legit, 0)}).`;
+      return s(`Coup attempt fails in ${c}`, `Unrest ${pct(x.unrest)}, legitimacy ${pct(x.legit)}.`);
     case 'protests':
-      return `${c}: mass protests (unrest ${pct(x.unrest, 0)}; approval ${pct(x.approval, 0)}, misery index ${x.misery.toFixed(1)}, religious polarisation ${x.polar.toFixed(2)}).`;
+      return s(`Mass protests in ${c}`, `Approval ${pct(x.approval)}, hardship index ${x.misery.toFixed(0)}${x.polar > 0.6 ? ', deep religious divisions' : ''}.`);
     case 'government_collapse':
-      return `${c}: the government falls amid mass unrest (unrest ${pct(x.unrest, 0)}, legitimacy ${pct(x.legit, 0)}); early elections are called.`;
+      return s(`${c}'s government falls amid protests`, 'Early elections have been called.');
     case 'revolution':
-      return `${c}: popular uprising topples the regime and opens a democratic transition (unrest ${pct(x.unrest, 0)}, legitimacy ${pct(x.legit, 0)}, religious polarisation ${x.polar.toFixed(2)}).`;
+      return s(`Revolution in ${c} opens the way to democracy`, `Unrest reached ${pct(x.unrest)}; the old regime's legitimacy was ${pct(x.legit)}.`);
     case 'regime_overthrown':
-      return `${c}: uprising overthrows the government; a new authoritarian leadership takes power (unrest ${pct(x.unrest, 0)}, legitimacy ${pct(x.legit, 0)}).`;
+      return s(`Uprising topples the government of ${c}`, 'New authoritarian leaders take over.');
     case 'democratization':
-      return `${c} becomes an electoral democracy (democracy index ${e.v!.toFixed(2)}, legitimacy ${pct(x.legit, 0)}).`;
+      return s(`${c} becomes a democracy`, `Its democracy score rose to ${e.v!.toFixed(2)} (0 = none, 1 = full).`);
     case 'autocratization':
-      return `${c} slides into electoral autocracy (democracy index ${e.v!.toFixed(2)}; incumbent approval ${pct(x.approval, 0)}).`;
-    // diplomacy
-    case 'diplomatic_crisis':
-      return `Diplomatic crisis between ${c} and ${name(e.o!)} (trust ${x.trust.toFixed(2)}, grievance ${x.grievance.toFixed(2)}, perceived threat ${x.threatAB.toFixed(2)} / ${x.threatBA.toFixed(2)}).`;
-    case 'sanctions_imposed':
-      return `${c} imposes ${e.v! >= 1 ? 'sectoral' : 'targeted'} sanctions on ${name(e.o!)} (trust ${x.trust.toFixed(2)}, grievance ${x.grievance.toFixed(2)}${x.coupMemory > 0.3 ? ', after a coup' : ''}${x.allies > 0 ? `, ${pct(x.allies, 0)} of its allies already sanctioning` : ''}; trade at stake ${pct(x.tradeDep)} of GDP).`;
-    case 'un_sanctions_lifted':
-      return `The UN Security Council lifts its sanctions on ${c} (democracy index ${x.demo.toFixed(2)}, ${x.demo0.toFixed(2)} at the start).`;
-    case 'sanctions_lifted':
-      return `${c} lifts its sanctions on ${name(e.o!)} (trust ${x.trust.toFixed(2)}).`;
-    case 'alliance_joined':
-      return `${c} joins a defence treaty with ${name(e.o!)} and others (now ${e.v} members; trust in members ${x.trustInMembers.toFixed(2)}${x.threatFrom >= 0 ? `, main threat ${name(x.threatFrom)}` : ''}).`;
-    case 'alliance_left':
-      return `${c} leaves its defence treaty with ${e.o! >= 0 ? name(e.o!) : 'its partners'} (trust in members ${x.trustInMembers.toFixed(2)}; ${e.v} members remain).`;
-    case 'alliance_formed':
-      return `${c} and ${name(e.o!)} sign a defence pact (trust ${x.trust.toFixed(2)}, threats faced ${x.threatA.toFixed(2)} / ${x.threatB.toFixed(2)}).`;
+      return s(`${c} slides into authoritarian rule`, `Its democracy score fell to ${e.v!.toFixed(2)}${x.approval > 0.55 ? `; a popular government (approval ${pct(x.approval)}) weakened the checks on its power` : ''}.`);
     case 'elections_restored':
-      return `${c}: the ruling authorities restore elections (democracy index ${e.v!.toFixed(2)}).`;
+      return s(`${c}'s rulers bring back elections`);
+    case 'diplomatic_crisis':
+      return s(`Crisis between ${c} and ${o}`, `The two have ${relation(x.trust)}${x.grievance > 0.5 ? ' and a history of conflict' : ''}.`);
+    case 'sanctions_imposed':
+      return s(`${c} imposes ${e.v! >= 1 ? 'broad economic' : 'targeted'} sanctions on ${o}`,
+        [x.coupMemory > 0.3 ? `After a coup in ${o}.` : '', x.allies > 0 ? `${pct(x.allies)} of ${c}'s allies already sanction ${o}.` : '', x.tradeDep > 0.005 ? `Trade worth ${pct(x.tradeDep, 1)} of ${c}'s GDP is at stake.` : ''].filter(Boolean).join(' '));
+    case 'un_sanctions_lifted':
+      return s(`UN lifts sanctions on ${c}`, x.demo > x.demo0 ? 'After democratic reforms.' : '');
+    case 'sanctions_lifted':
+      return s(`${c} lifts sanctions on ${o}`);
+    case 'alliance_joined':
+      return s(`${c} joins an alliance with ${o} and others`, `The alliance now has ${e.v} members${x.threatFrom >= 0 ? `; ${c} feels threatened by ${name(x.threatFrom)}` : ''}.`);
+    case 'alliance_left':
+      return s(`${c} leaves its alliance with ${o || 'its partners'}`, `Relations with the other members had soured.`);
+    case 'alliance_formed':
+      return s(`${c} and ${o} sign a defence pact`, `Both feel threatened and trust each other.`);
     default:
-      return `${c}: ${e.k}`;
+      return s(`${c}: ${e.k.replace(/_/g, ' ')}`);
   }
 }
+
+/** One-line text (headless runner, logs). */
+export const eventText = (e: SimEvent, name: (c: number) => string) => { const t = describeEvent(e, name); return t.why ? `${t.headline}. ${t.why}` : t.headline; };
+
+/** How newsworthy an event is: 3 = world-changing, 2 = major, 1 = routine. Scaled by the countries' size in the UI. */
+export const IMPORTANCE: Record<string, number> = {
+  oil_shock: 3, gdp_rank_up: 3, coup: 3, revolution: 3, regime_overthrown: 3, sovereign_default: 3, alliance_joined: 3, alliance_left: 3, alliance_formed: 3,
+  democratization: 2, autocratization: 2, government_collapse: 2, election_lost: 2, diplomatic_crisis: 2, sanctions_imposed: 2, un_sanctions_lifted: 2,
+  pop_peak: 2, inflation_high: 2, recession_start: 2, protests: 2, coup_failed: 2, elections_restored: 2,
+  election_won: 1, recession_end: 1, debt_above: 1, pop_above: 1, pop_below: 1, sanctions_lifted: 1, inflation_tamed: 1,
+};

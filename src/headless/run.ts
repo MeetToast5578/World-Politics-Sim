@@ -4,7 +4,7 @@ import { loadBaseline } from './load';
 import { Simulation } from '../engine/sim';
 import { totalPop } from '../engine/state';
 import { formatDate, addMonths } from '../engine/calendar';
-import { describeEvent } from '../engine/describe';
+import { eventText } from '../engine/describe';
 
 const years = Number(process.argv[2] ?? 100);
 const seed = Number(process.argv[3] ?? 1);
@@ -33,5 +33,5 @@ for (const c of top) {
   console.log(`  ${name(c).padEnd(26)} GDP ${(f.gdp[c] / 1e12).toFixed(2).padStart(7)} tn  pop ${(P / 1e6).toFixed(0).padStart(5)} m  GDP/cap ${Math.round(f.gdp[c] / P).toString().padStart(7)}  TFR ${f.tfr[c].toFixed(2)}  e0 ${f.lifeExp[c].toFixed(1)}  debt ${(100 * f.debt[c] / f.gdp[c]).toFixed(0)}%`);
 }
 console.log('\nLast events:');
-for (const e of sim.st.events.slice(-8)) console.log('  ' + formatDate(e.d) + '  ' + describeEvent(e, name));
+for (const e of sim.st.events.slice(-8)) console.log('  ' + formatDate(e.d) + '  ' + eventText(e, name));
 console.log(`\n${years} years in ${ms.toFixed(0)} ms; state hash ${sim.hash()}`);

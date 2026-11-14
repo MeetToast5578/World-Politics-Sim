@@ -355,7 +355,20 @@ export function diplomacyYearly(st: WorldState, b: Baseline, p: Params, rng: Rng
   }
 }
 
-/** Treaty label for display: the curated name, or the largest members. */
+/** Common names of the multilateral ATOP treaties in the 2023 baseline (display only; not part of the saved state). */
+const ATOP_NAMES: Record<string, string> = {
+  ATOP3075: 'Rio Treaty', ATOP3150: 'Organization of American States', ATOP3205: 'Arab League defence treaty',
+  ATOP3895: 'ECOWAS defence protocol', ATOP3900: 'Organisation of Eastern Caribbean States', ATOP3995: 'Arab Maghreb Union',
+  ATOP4220: 'CSTO', ATOP4400: 'Commonwealth of Independent States', ATOP4678: 'Central American security treaty',
+  ATOP4778: 'Eastern Caribbean Regional Security System', ATOP4945: 'Central African mutual assistance pact',
+  ATOP4965: 'Gulf Cooperation Council defence pact', ATOP4985: 'SADC mutual defence pact',
+  ATOP5055: 'African Union common defence pact', ATOP5090: 'Great Lakes defence pact',
+};
+
+/** Treaty label for display: the curated or common name, else the members. */
 export function treatyLabel(t: Treaty, name: (c: number) => string): string {
-  return t.label ?? `${t.members.length === 2 ? 'Pact' : 'Treaty'}: ${t.members.slice(0, 3).map(name).join(', ')}${t.members.length > 3 ? ` +${t.members.length - 3}` : ''}`;
+  const known = t.label ?? ATOP_NAMES[t.id];
+  if (known) return known;
+  if (t.members.length === 2) return `${name(t.members[0])}–${name(t.members[1])} defence pact`;
+  return `Defence treaty of ${t.members.slice(0, 2).map(name).join(', ')} and ${t.members.length - 2} others`;
 }

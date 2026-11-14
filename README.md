@@ -13,9 +13,10 @@ inflation, sector shares, public debt with fiscal reaction and sovereign default
 (V-Dem democracy and regime types, approval, legitimacy, unrest, elections, coups, uprisings, democratisation and
 autocratisation, calibrated to observed base rates); diplomacy (trust, grievance and threat between countries,
 ATOP defence treaties, sanctions, crises, trade shaped by politics); an event
-chronicle that records the causes of each event; pause/play/speed/step, save/load, rewind and branching timelines;
-30 map modes (including relations with any selected country) and a per-country inspector (population pyramid,
-religious composition, politics, alliances, sanctions, and the reasons behind each relationship).
+chronicle that records the causes of each event; pause/play/speed/step, save/load, rewind and branching timelines.
+The interface is written for people, not modellers: plain-language news with a "why" for every event, seven main maps
+plus 21 more, a history bar to go back to any year, and a country view in tabs (overview, people, economy, politics,
+relations, and a data tab with every source and the raw model state).
 `docs/BACKTEST.md` reports how well the model reproduces 2000→2023 from 2000 data.
 
 **What does not exist yet:** wars and territorial change (Phase 4), explicit political actors and parties,

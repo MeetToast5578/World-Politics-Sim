@@ -17,7 +17,7 @@ Sections marked **[implemented]** describe running code; **[design]** describes 
 | Backtest 2000→2023 with naive benchmarks, ensemble coverage, sensitivity analysis | implemented (`docs/BACKTEST.md`) |
 | Military capital stock (perpetual inventory of spending) | implemented (no conflict use yet) |
 | Chronicle/news events carrying their causal inputs | implemented |
-| Observer UI: map with 30 modes, time controls, country inspector with population pyramid, world panel, news feed | implemented |
+| Observer UI: light, plain-language atlas; 28 map modes (7 featured), history bar with rewind, tabbed country view, world summary, news with explanations | implemented |
 | Religion: 31 denominations/sects per country, secularisation, fractionalisation and polarisation | implemented (Phase 3, see §3.3) |
 | Domestic politics: democracy index and regime, approval, legitimacy, unrest, elections, coups, uprisings, regime change | implemented, aggregate level (Phase 3, see §3.4); political actors/factions still design |
 | Diplomacy: relations (trust, grievance, threat), defence treaties, sanctions, crises, friend-shoring, "why" inspector | implemented (Phase 3b, see §3.5); international organisations other than defence treaties still design |
