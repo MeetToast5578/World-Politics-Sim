@@ -144,6 +144,7 @@ const variants: [string, Partial<Params>][] = [
   ['trade.spillover 0 (no shock transmission)', { trade: { ...P.trade, spillover: 0 } }],
   ['oil.sd 0 (no oil shocks)', { oil: { ...P.oil, sd: 0 } }],
   ['fertilityDrift off', { fertilityDrift: { ...P.fertilityDrift, on: false } }],
+  ['fertilityPhase3 off (no post-transition recovery)', { fertilityPhase3: { ...P.fertilityPhase3, on: false } }],
   ['transitionYears 8 (default 15)', { transitionYears: 8 }],
 ];
 md += `\n## Sensitivity (one parameter at a time, 5 seeds each)\n\nMedian absolute error / bias. The defaults are set from the literature

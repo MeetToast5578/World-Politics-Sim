@@ -18,7 +18,7 @@ import type { Params } from '../params';
 import type { Rng } from '../rng';
 import type { WorldState } from '../state';
 import { curveAt, gdpPppPc } from './demography';
-import { exportShare, tradeOpenness, type TradeNet } from './trade';
+import { exportShare, tradeOpenness, worldGdp, type TradeNet } from './trade';
 
 const DT = 0.25;
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
@@ -110,16 +110,17 @@ export function economyQuarterly(st: WorldState, p: Params, rng: Rng, oilRng: Rn
   const world = rng.normal(), wg = Math.sqrt(p.globalShockShare), wi = Math.sqrt(1 - p.globalShockShare);
   for (let c = 0; c < n; c++) f.cycle[c] = p.cycleRho * f.cycle[c] + f.cycleSd[c] * (wg * world + wi * rng.normal());
   // 3. output gaps: own cycle + partners' domestic cycles weighted by export shares + oil terms of trade
-  const gapNew = new Float64Array(n);
+  const gapNew = new Float64Array(n), W = worldGdp(f.gdp);
   for (let c = 0; c < n; c++) {
     let spill = 0;
-    for (let k = 0; k < trade.partners[c].length; k++) spill += exportShare(trade, f.gdp, c, k) * f.cycle[trade.partners[c][k]];
+    for (let k = 0; k < trade.partners[c].length; k++) spill += exportShare(trade, f.gdp, W, c, k) * f.cycle[trade.partners[c][k]];
     gapNew[c] = f.cycle[c] + p.trade.spillover * spill + p.oil.incomeEffect * f.oilExp[c] * st.g.oilLn;
   }
   for (let c = 0; c < n; c++) {
     f.A[c] *= Math.exp(growthA[c] * DT);
     f.gap[c] = gapNew[c];
-    f.unemp[c] = Math.max(0.5, f.unempStar[c] - p.okun * f.gap[c] * 100);
+    // physical bounds: unemployment cannot reach 100%; 60% exceeds any recorded national rate
+    f.unemp[c] = Math.min(60, Math.max(0.5, f.unempStar[c] - p.okun * f.gap[c] * 100));
     const Yprev = f.gdp[c];
     const Y = f.A[c] * f.K[c] ** p.alpha * labour(st, c) ** (1 - p.alpha) * Math.exp(f.gap[c]);
     f.gdpPrevQ[c] = Yprev;
@@ -154,7 +155,7 @@ export function economyQuarterly(st: WorldState, p: Params, rng: Rng, oilRng: Rn
 
 /** Yearly structural update: sector shares and structural investment relax toward income curves. */
 export function economyYearly(st: WorldState, b: Baseline, p: Params, trade: TradeNet): void {
-  const cv = b.meta.curves, f = st.f;
+  const cv = b.meta.curves, f = st.f, W = worldGdp(f.gdp);
   const relax = 1 - Math.exp(-1 / p.transitionYears), decay = Math.exp(-1 / p.residualYears);
   for (let c = 0; c < st.n; c++) {
     f.agriResid[c] *= decay; f.indResid[c] *= decay; f.invResid[c] *= decay;
@@ -162,6 +163,6 @@ export function economyYearly(st: WorldState, b: Baseline, p: Params, trade: Tra
     f.agriShare[c] += (clamp(curveAt(cv.agriShare, y) / 100 + f.agriResid[c], 0.002, 0.8) - f.agriShare[c]) * relax;
     f.indShare[c] += (clamp(curveAt(cv.industryShare, y) / 100 + f.indResid[c], 0.05, 0.85) - f.indShare[c]) * relax;
     f.sStruct[c] += (clamp(curveAt(cv.investment, y) / 100 + f.invResid[c], 0.05, 0.6) - f.sStruct[c]) * relax;
-    f.tradeShare[c] = tradeOpenness(trade, f.gdp, c);
+    f.tradeShare[c] = tradeOpenness(trade, f.gdp, c, W);
   }
 }

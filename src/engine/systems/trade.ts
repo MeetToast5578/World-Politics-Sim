@@ -1,9 +1,10 @@
 // Gravity trade network (structural cache, rebuilt from the baseline at construction; not part of saved state).
 //
-// Bilateral exports X_ij = a_i · b_j · Y_i · Y_j · D_ij^(−θ) · e^(γ·contig_ij) over a sparse partner set (each
+// Bilateral exports X_ij = a_i · b_j · (Y_i · Y_j / Y_W) · Y_W0 · D_ij^(−θ) · e^(γ·contig_ij) over a sparse partner set (each
 // country's top-K partners by gravity mass, made symmetric). a_i, b_j are fitted by iterative proportional fitting so
-// that every country's exports and imports each equal half its observed trade/GDP ratio at baseline.
-// Flows then evolve with GDP. No bilateral trade data is used yet: the partner pattern is a model estimate.
+// that every country's exports and imports each equal half its observed trade/GDP ratio at baseline. Dividing by
+// world GDP Y_W (structural gravity, Anderson & van Wincoop 2003) keeps trade shares stable under uniform growth;
+// shares change only when a country grows faster or slower than its partners. No bilateral trade data is used yet: the partner pattern is a model estimate.
 import type { Baseline } from '../types';
 import type { Params } from '../params';
 
@@ -12,6 +13,7 @@ export interface TradeNet {
   dist: Float64Array[];     // distance factor D^(−θ)·e^(γ·contig) per partner
   a: Float64Array;          // exporter fit factor
   b: Float64Array;          // importer fit factor
+  world0: number;           // world GDP at baseline
 }
 
 const R = 6371;
@@ -67,19 +69,22 @@ export function buildTrade(b: Baseline, gdp: Float64Array, p: Params): TradeNet 
       bb[j] = s > 0 ? target[j] / s : 0;
     }
   }
-  return { partners, dist, a, b: bb };
+  return { partners, dist, a, b: bb, world0: gdp.reduce((s, y) => s + y, 0) };
 }
 
-/** Export share of country i going to its k-th partner, as a share of i's GDP: X_ij / Y_i. */
-export const exportShare = (t: TradeNet, gdp: Float64Array, i: number, k: number) => t.a[i] * t.b[t.partners[i][k]] * gdp[t.partners[i][k]] * t.dist[i][k];
+export const worldGdp = (gdp: Float64Array) => { let s = 0; for (let i = 0; i < gdp.length; i++) s += gdp[i]; return s; };
+
+/** Exports of country i to its k-th partner as a share of i's GDP: X_ij / Y_i (world = current world GDP). */
+export const exportShare = (t: TradeNet, gdp: Float64Array, world: number, i: number, k: number) =>
+  (t.a[i] * t.b[t.partners[i][k]] * gdp[t.partners[i][k]] * t.dist[i][k] * t.world0) / world;
 
 /** Exports + imports over GDP (%), with current GDPs. */
-export function tradeOpenness(t: TradeNet, gdp: Float64Array, i: number): number {
+export function tradeOpenness(t: TradeNet, gdp: Float64Array, i: number, world = worldGdp(gdp)): number {
   let x = 0, m = 0;
   for (let k = 0; k < t.partners[i].length; k++) {
     const j = t.partners[i][k];
     x += t.a[i] * t.b[j] * gdp[j] * t.dist[i][k];
     m += t.a[j] * t.b[i] * gdp[j] * t.dist[i][k]; // dist is symmetric
   }
-  return 100 * (x + m);
+  return (100 * (x + m) * t.world0) / world;
 }

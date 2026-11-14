@@ -18,6 +18,11 @@ export const DEFAULT_PARAMS = {
    *  effective drift years = fadeYears·(1 − e^(−t/fadeYears)). fadeYears is an assumption: a decade-long trend is not
    *  extrapolated indefinitely. Long-run fertility is the largest demographic uncertainty (DESIGN.md §8). */
   fertilityDrift: { on: true, fadeYears: 20 },
+  /** Post-transition fertility (scenario parameter). UN WPP models fertility after it falls below replacement as
+   *  recovering toward a long-run level (Phase III; Alkema et al. 2011, Ševčíková et al. 2015, world mean ≈ 1.75-1.85).
+   *  Whether recovery happens is contested: realised fertility in 2010-2023 kept falling in most low-fertility countries.
+   *  on: false keeps the income curve (plateau ≈ 1.4) indefinitely. years: blending time constant (assumption). */
+  fertilityPhase3: { on: true, level: 1.75, entry: 2.0, years: 50 },
   /** Decay time (years) of each country's net migration rate toward zero. UN WPP likewise assumes long-run convergence
    *  of migration; stands in for a push/pull migration model (Phase 5). Assumption. */
   migrationYears: 25,

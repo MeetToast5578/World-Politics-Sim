@@ -148,9 +148,9 @@ describe('invariants', () => {
     }
     expect(checked).toBeGreaterThan(150);
   });
-  it('no NaN, infinities or negative stocks after 200 years', () => {
-    const sim = new Simulation(b, { seed: 3 });
-    years(sim, 200);
+  it.each([1, 3])('no NaN, infinities or negative stocks after 300 years (seed %i)', (seed) => {
+    const sim = new Simulation(b, { seed });
+    years(sim, 300);
     const { f } = sim.st;
     const nonNegative = ['p0', 'p1', 'p2', 'gdp', 'K', 'A', 'debt', 'milCap', 'tfr', 'lifeExp'] as const;
     for (const k of FIELDS) {
@@ -158,6 +158,7 @@ describe('invariants', () => {
       for (let c = 0; c < sim.st.n; c++) expect(Number.isFinite(f[k][c]), `${k}[${sim.st.ids[c]}]`).toBe(true);
     }
     for (const k of nonNegative) for (let c = 0; c < sim.st.n; c++) expect(f[k][c]).toBeGreaterThanOrEqual(0);
-    expect(sim.st.history.years.length).toBe(201);
+    expect(sim.st.history.years.length).toBe(301);
+    for (let c = 0; c < sim.st.n; c++) expect(f.unemp[c]).toBeLessThan(60.0001);
   });
 });

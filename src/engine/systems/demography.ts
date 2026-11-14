@@ -14,6 +14,8 @@
 //              also drifts at the rate observed in the decade before the baseline (fertility fell faster than
 //              income alone explains), fading over time. Mortality curves do not drift: their estimated drift was
 //              not stable across periods (AIDS in the 1990s, COVID in 2020-22) — see docs/DESIGN.md.
+//              After TFR first falls below replacement, the target blends (log-linearly, time constant
+//              fertilityPhase3.years) toward a long-run level, as in UN WPP's "Phase III" assumption.
 // Initial single-year ages: WDI 5-year groups split evenly within each group; the 80+ group is spread over 80..100+
 // in proportion to life-table survivorship (stationary assumption inside that group).
 import type { Baseline, Curve } from '../types';
@@ -286,7 +288,12 @@ export function demographyYearly(st: WorldState, b: Baseline, p: Params): void {
     f.migRate[c] *= migDecay;
     for (const k of ['tfrResid', 'e0FResid', 'e0MResid', 'u5FResid', 'u5MResid'] as const) f[k][c] *= decay;
     const y = gdpPppPc(st, c);
-    f.tfr[c] += (curveAt(cv.tfr, y, dy) * Math.exp(f.tfrResid[c]) - f.tfr[c]) * relax;
+    // Post-transition ("Phase III", UN WPP): once below replacement, the target blends toward a long-run level.
+    if (f.phase3Years[c] > 0 || f.tfr[c] < p.fertilityPhase3.entry) f.phase3Years[c] += 1;
+    const w = Math.exp(-f.phase3Years[c] / p.fertilityPhase3.years);
+    const transition = curveAt(cv.tfr, y, dy) * Math.exp(f.tfrResid[c]);
+    const tfrTarget = p.fertilityPhase3.on ? Math.exp(w * Math.log(transition) + (1 - w) * Math.log(p.fertilityPhase3.level)) : transition;
+    f.tfr[c] += (tfrTarget - f.tfr[c]) * relax;
     f.e0F[c] += (curveAt(cv.lifeExpF, y) + f.e0FResid[c] - f.e0F[c]) * relax;
     f.e0M[c] += (curveAt(cv.lifeExpM, y) + f.e0MResid[c] - f.e0M[c]) * relax;
     f.u5F[c] += ((curveAt(cv.u5mrF, y) / 1000) * Math.exp(f.u5FResid[c]) - f.u5F[c]) * relax;
