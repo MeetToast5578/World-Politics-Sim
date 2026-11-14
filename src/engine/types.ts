@@ -34,7 +34,11 @@ export interface BaselineRegion {
 }
 
 /** Piecewise-linear curve through [x, y] knots (binned medians), flat beyond the end knots. */
-export interface Curve { knots: [number, number][]; n: number; x: string }
+export interface Curve {
+  knots: [number, number][]; n: number; x: string;
+  /** Per-knot change per year not explained by income growth (log change if driftLog), from a 10-year panel. */
+  drift?: number[]; driftLog?: boolean; driftFrom?: string;
+}
 
 export interface Baseline {
   meta: {
@@ -43,7 +47,7 @@ export interface Baseline {
     generated: string;
     sources: Record<string, { name: string; url: string; license: string }>;
     indicators: Record<string, { source: string; code: string; agg: string }>;
-    curves: { tfr: Curve; lifeExp: Curve };
+    curves: Record<'tfr' | 'lifeExpF' | 'lifeExpM' | 'u5mrF' | 'u5mrM' | 'agriShare' | 'industryShare' | 'investment', Curve>;
     coverage: Record<string, Record<string, number>>;
   };
   countries: BaselineCountry[];

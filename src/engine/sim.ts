@@ -1,9 +1,10 @@
 // Simulation: owns a WorldState and advances it through a fixed, documented update order.
 //
 // Time-step architecture (see docs/DESIGN.md §4). The clock is an integer day. Systems run on calendar boundaries:
-//   every 1st of month : demography (monthly)
-//   1 Jan/Apr/Jul/Oct  : economy (quarterly) -> chronicle (quarterly)
-//   every 1 Jan        : demography (yearly transition) -> chronicle (yearly) -> history record
+//   1 Jan/Apr/Jul/Oct  : economy (quarterly: oil price, TFP, cycle, inflation, debt) -> chronicle (quarterly)
+//   every 1 Jan        : demography (cohort-component step + transition) -> economy (yearly structure)
+//                        -> chronicle (yearly) -> history record
+// On 1 January the economy's quarter runs before demography, so both read the population of the year just ended.
 // Order within a boundary is fixed so each system reads a consistent state. Days between boundaries have no
 // scheduled work in Phase 1, so advancing jumps from boundary to boundary (cost is independent of day count).
 import type { Baseline } from './types';
@@ -11,11 +12,12 @@ import { DEFAULT_PARAMS, type Params } from './params';
 import { Rng } from './rng';
 import { civilFromDays, nextMonthStart } from './calendar';
 import { createState, totalPop, hashState, HIST_FIELDS, type WorldState } from './state';
-import { initDemography, initTransitionResiduals, demographyMonthly, demographyYearly } from './systems/demography';
-import { initEconomy, economyQuarterly } from './systems/economy';
+import { initDemography, initTransitionResiduals, demographyYearly } from './systems/demography';
+import { initEconomy, initEconomyResiduals, economyQuarterly, economyYearly } from './systems/economy';
+import { buildTrade, type TradeNet } from './systems/trade';
 import { chronicleQuarterly, chronicleYearly } from './systems/chronicle';
 
-export const RNG_STREAMS = ['economy'] as const;
+export const RNG_STREAMS = ['economy', 'commodity'] as const;
 
 export interface SimConfig { seed: number; startDate?: string; params?: Partial<Params> }
 
@@ -24,6 +26,8 @@ export class Simulation {
   readonly params: Params;
   readonly startDate?: string;
   st: WorldState;
+  /** Gravity trade network: derived from the baseline only, so it is rebuilt identically on load and replay. */
+  readonly trade: TradeNet;
   private rngs: Record<string, Rng> = {};
 
   constructor(baseline: Baseline, cfg: SimConfig) {
@@ -34,6 +38,8 @@ export class Simulation {
     initDemography(this.st, baseline, this.params);
     initEconomy(this.st, baseline, this.params);
     initTransitionResiduals(this.st, baseline);
+    initEconomyResiduals(this.st, baseline);
+    this.trade = buildTrade(baseline, this.st.f.gdp, this.params);
     this.reseed(this.st.seed);
     chronicleYearly(this.st); // establishes milestone levels at t0 without emitting
     this.recordHistory();
@@ -65,13 +71,13 @@ export class Simulation {
   private boundary(day: number) {
     const { m } = civilFromDays(day);
     const st = this.st, p = this.params;
-    demographyMonthly(st, p);
     if ((m - 1) % 3 === 0) {
-      economyQuarterly(st, p, this.rngs.economy, (c, x) => st.events.push({ d: st.day, k: 'sovereign_default', c, v: x.debtRatio, x }));
+      economyQuarterly(st, p, this.rngs.economy, this.rngs.commodity, this.trade, (c, x) => st.events.push({ d: st.day, k: 'sovereign_default', c, v: x.debtRatio, x }));
       chronicleQuarterly(st);
     }
     if (m === 1) {
       demographyYearly(st, this.baseline, p);
+      economyYearly(st, this.baseline, p, this.trade);
       chronicleYearly(st);
       this.recordHistory();
     }

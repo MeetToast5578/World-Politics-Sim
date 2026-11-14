@@ -59,6 +59,25 @@ Columns: observed from the primary source / Natural Earth fallback / imputed / m
 | `govBalance` | IMF `GGXCNL_NGDP` | 192 | 0 | 8 | 0 |
 | `growthSd` | WDI `NY.GDP.MKTP.KD.ZG (sd 2000-2019)` | 192 | 0 | 8 | 0 |
 
+### Phase 2 additions
+
+| Field | Source | Used for |
+|---|---|---|
+| `f0004`…`f80UP`, `m0004`…`m80UP` | WDI `SP.POP.{group}.FE.5Y` / `.MA.5Y` (% of female/male population) | initial single-year age structure |
+| `femaleShare`, `srb` | WDI `SP.POP.TOTL.FE.ZS`, `SP.POP.BRTH.MF` | sex split, sex ratio at birth |
+| `lifeExpF/M`, `u5mrF/M` | WDI `SP.DYN.LE00.FE/MA.IN`, `SH.DYN.MORT.FE/MA` | Siler life tables per sex |
+| `oilRents`, `gasRents`, `coalRents`, `mineralRents` | WDI `NY.GDP.{PETR,NGAS,COAL,MINR}.RT.ZS` | oil-price exposure (not imputed: missing = no extraction) |
+| `gdpReal` | WDI `NY.GDP.MKTP.KD` | backtest target only |
+
+* `SP.ADO.TFRT` (adolescent fertility) would set each country's fertility timing, but the World Bank API returned
+  HTTP 400 for it in every query form (November 2026), so one timing schedule is used for all countries.
+* Net migration is the **mean** over the 9-year window, not the latest year: single years carry episodic flows
+  (Sudan 2023, Syria returns, Armenia 2023).
+* Income curves and their drift: see DESIGN.md §3.1. Drift uses a second cross-section ten years before the
+  reference year (fetched with the same indicators), so the 2000 baseline only uses data up to 2000.
+* `npm run data -- --year 2000` builds `baseline-2000.json` with the same pipeline (window 1992–2000; growth
+  volatility 1980–1999). Fiscal and governance coverage is thinner for 2000 (see its `meta.coverage`).
+
 Reference year: latest observation in 2015–2023 per country and field; the year is stored with every value
 (`{v, y, s}`). Growth volatility (`growthSd`) is the standard deviation of annual real GDP growth 2000–2019.
 GDP values from years before 2023 are treated as 2023 USD without deflating — a known approximation affecting the few

@@ -5,6 +5,7 @@ import { describeEvent } from '../engine/describe';
 import { formatDate } from '../engine/calendar';
 
 const KINDS: Record<string, string> = {
+  oil_shock: 'Oil shocks', inflation_high: 'Inflation', inflation_tamed: 'Inflation',
   gdp_rank_up: 'Economic rankings', sovereign_default: 'Sovereign defaults', recession_start: 'Recessions', recession_end: 'Recoveries',
   pop_peak: 'Population peaks', pop_above: 'Population milestones', pop_below: 'Population milestones', debt_above: 'Debt thresholds',
 };
@@ -19,7 +20,7 @@ export function EventFeed({ events, name, weight, onSelect }: Props) {
     for (let i = events.length - 1; i >= 0 && out.length < 150; i--) {
       const e = events[i];
       if (off.has(e.k)) continue;
-      if (e.k !== 'gdp_rank_up' && weight(e.c) < minPop) continue;
+      if (e.c >= 0 && e.k !== 'gdp_rank_up' && weight(e.c) < minPop) continue;
       out.push(e);
     }
     return out;
@@ -51,7 +52,7 @@ export function EventFeed({ events, name, weight, onSelect }: Props) {
       <ul className="events">
         {shown.length === 0 && <li className="muted">Nothing yet. Press play.</li>}
         {shown.map((e, i) => (
-          <li key={`${e.d}-${e.k}-${e.c}-${i}`} onClick={() => onSelect(e.c)}>
+          <li key={`${e.d}-${e.k}-${e.c}-${i}`} onClick={() => e.c >= 0 && onSelect(e.c)}>
             <time>{formatDate(e.d)}</time> {describeEvent(e, name)}
           </li>
         ))}

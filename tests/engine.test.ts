@@ -5,7 +5,7 @@ import { Rng } from '../src/engine/rng';
 import { daysFromCivil, civilFromDays, addMonths, formatDate, parseDate } from '../src/engine/calendar';
 import { saveWorld, loadWorld } from '../src/engine/save';
 import { FIELDS, totalPop, cloneState } from '../src/engine/state';
-import { demographyMonthly } from '../src/engine/systems/demography';
+import { demographyYearly, solveSiler, lifeExpectancy, under5 } from '../src/engine/systems/demography';
 import { economyQuarterly, interestRate } from '../src/engine/systems/economy';
 
 const b = loadBaseline();
@@ -105,17 +105,34 @@ describe('reproducibility', () => {
 
 describe('invariants', () => {
   it('ageing and migration conserve people (births and deaths switched off)', () => {
-    const sim = new Simulation(b, { seed: 1 });
-    sim.st.f.fertK.fill(0); sim.st.f.mortK.fill(0);
+    const sim = new Simulation(b, { seed: 1, params: { siler: { b1: 1.5, b2: 0.09, cA1: 0.02, c0: 0 } } });
+    const f = sim.st.f;
+    f.fertK.fill(0); f.silA1F.fill(0); f.silA2F.fill(0); f.silA1M.fill(0); f.silA2M.fill(0);
     const P0 = worldPop(sim);
-    for (let i = 0; i < 24; i++) demographyMonthly(sim.st, sim.params);
-    expect(worldPop(sim) / P0 - 1).toBeLessThan(1e-12);
-    expect(1 - worldPop(sim) / P0).toBeLessThan(1e-12);
+    demographyYearly(sim.st, b, sim.params); // one cohort-component step: ageing + migration only
+    expect(Math.abs(worldPop(sim) / P0 - 1)).toBeLessThan(1e-12);
+  });
+  it('Siler life tables reproduce the life expectancy and under-5 mortality they were solved for', () => {
+    const p = new Simulation(b, { seed: 1 }).params;
+    for (const [e0, u5] of [[55, 0.12], [72, 0.03], [86, 0.003]]) {
+      const [a1, a2] = solveSiler(p, e0, u5);
+      expect(lifeExpectancy(p, a1, a2)).toBeCloseTo(e0, 2);
+      expect(under5(p, a1, a2)).toBeCloseTo(u5, 4);
+    }
+  });
+  it('baseline cohorts reproduce WDI population, sex shares and births', () => {
+    const sim = new Simulation(b, { seed: 1 });
+    const { f } = sim.st;
+    b.countries.forEach((bc, c) => {
+      expect(totalPop(sim.st, c) / bc.fields.pop!.v).toBeCloseTo(1, 9);
+      // implied crude death rate from the life tables is a model output; it should be in the right range
+      expect(f.p0[c] / totalPop(sim.st, c)).toBeCloseTo(bc.fields.pop0014!.v / 100, 1);
+    });
   });
   it('public debt follows the budget identity', () => {
     const sim = new Simulation(b, { seed: 1 });
     const before = cloneState(sim.st);
-    economyQuarterly(sim.st, sim.params, new Rng(1));
+    economyQuarterly(sim.st, sim.params, new Rng(1), new Rng(2), sim.trade);
     const { f } = sim.st, p = sim.params;
     let checked = 0;
     for (let c = 0; c < sim.st.n; c++) {
@@ -123,16 +140,17 @@ describe('invariants', () => {
       if (before.f.debt[c] === 0) continue;
       const interest = interestRate(p, d, before.f.debtRatio0[c]) * before.f.debt[c];
       if (interest / (f.revShare[c] * Y) > p.defaultBurden) continue; // restructured this quarter
-      const expected = before.f.debt[c] + ((f.primSpendShare[c] - f.revShare[c]) * Y + interest) * 0.25;
+      const surprise = p.inflation.phillips * 100 * f.gap[c] + p.oil.cpiWeight * sim.st.g.oilDln * 400;
+      const expected = before.f.debt[c] * Math.exp((-surprise / 100) * 0.25) + ((f.primSpendShare[c] - f.revShare[c]) * Y + interest) * 0.25;
       if (expected <= 0) continue;
       expect(f.debt[c]).toBeCloseTo(expected, 3);
       checked++;
     }
     expect(checked).toBeGreaterThan(150);
   });
-  it('no NaN, infinities or negative stocks after 200 years', () => {
-    const sim = new Simulation(b, { seed: 3 });
-    years(sim, 200);
+  it.each([1, 3])('no NaN, infinities or negative stocks after 300 years (seed %i)', (seed) => {
+    const sim = new Simulation(b, { seed });
+    years(sim, 300);
     const { f } = sim.st;
     const nonNegative = ['p0', 'p1', 'p2', 'gdp', 'K', 'A', 'debt', 'milCap', 'tfr', 'lifeExp'] as const;
     for (const k of FIELDS) {
@@ -140,6 +158,7 @@ describe('invariants', () => {
       for (let c = 0; c < sim.st.n; c++) expect(Number.isFinite(f[k][c]), `${k}[${sim.st.ids[c]}]`).toBe(true);
     }
     for (const k of nonNegative) for (let c = 0; c < sim.st.n; c++) expect(f[k][c]).toBeGreaterThanOrEqual(0);
-    expect(sim.st.history.years.length).toBe(201);
+    expect(sim.st.history.years.length).toBe(301);
+    for (let c = 0; c < sim.st.n; c++) expect(f.unemp[c]).toBeLessThan(60.0001);
   });
 });

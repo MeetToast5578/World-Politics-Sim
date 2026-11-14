@@ -19,6 +19,7 @@ export interface CountryDetail {
   c: number;
   fields: Record<string, number>;
   history: { years: number[]; series: Record<string, number[]> };
+  pyramid: { f: number[]; m: number[] }; // persons by single year of age 0..100+
 }
 
 export interface Frame {
@@ -29,7 +30,7 @@ export interface Frame {
   playing: boolean;
   branches: { day: number; seed: number }[];
   metrics: Record<string, number[]>; // map mode -> value per country
-  world: { pop: number; gdp: number; old: number; events: number; years: number[]; popSeries: number[]; gdpSeries: number[] };
+  world: { pop: number; gdp: number; old: number; oil: number; events: number; years: number[]; popSeries: number[]; gdpSeries: number[] };
   newEvents: SimEvent[];
   resetEvents: boolean; // true: newEvents is the full list (after load / rewind / restart)
   detail: CountryDetail | null;

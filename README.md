@@ -1,15 +1,17 @@
 # WORLD — a geopolitical simulation you observe
 
 An autonomous world simulator: start from a documented 2023 baseline of the real world and watch it evolve on its own.
-History is meant to emerge from interacting models, not from scripts. This repository currently contains **Phase 1**:
-the data pipeline, a deterministic simulation engine with first demographic and economic models, and an observer UI.
+History is meant to emerge from interacting models, not from scripts. This repository currently contains **Phases 1 and 2**:
+the data pipeline, a deterministic simulation engine with demographic and economic models, a 2000→2023 backtest,
+and an observer UI.
 
-**What runs today:** 200 political entities on a 1:50m world map; monthly demography (3 age cohorts, conserved
-migration, income-driven demographic transition); quarterly economy (Solow growth with technology diffusion, business
-cycles with a common world shock, unemployment, public debt with fiscal reaction and sovereign default, military
-capital); an event chronicle that records the causes of each event; pause/play/speed/step, save/load, rewind and
-branching timelines; 15 map modes and a per-country inspector that shows every model variable next to its sourced
-baseline value.
+**What runs today:** 200 political entities on a 1:50m world map; cohort-component demography by single year of age
+and sex (life tables solved per country, conserved migration, demographic transition); a quarterly economy (growth
+with technology diffusion through trade, business cycles with a world shock and trade transmission, a world oil price,
+inflation, sector shares, public debt with fiscal reaction and sovereign default, military capital); an event
+chronicle that records the causes of each event; pause/play/speed/step, save/load, rewind and branching timelines;
+19 map modes and a per-country inspector (population pyramid, every model variable next to its sourced baseline).
+`docs/BACKTEST.md` reports how well the model reproduces 2000→2023 from 2000 data.
 
 **What does not exist yet:** politics, elections, diplomacy, alliances, wars and territorial change, technology,
 environment, ideology. Government form and governance scores are static baseline data. See
@@ -40,8 +42,13 @@ npm run headless -- 300 42
 npm run bench
 ```
 
+```bash
+npm run backtest -- 20
+```
+
 `npm run headless -- <years> <seed>` prints world aggregates per decade, the largest economies and the state hash.
-`npm run data` rebuilds the baseline from the public sources (needs network; see [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)).
+`npm run data` rebuilds the baseline from the public sources and `npm run data -- --year 2000` the backtest baseline
+(needs network; see [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)). `npm run backtest` regenerates `docs/BACKTEST.md`.
 
 ## Layout
 

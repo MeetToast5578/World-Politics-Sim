@@ -5,10 +5,16 @@ const fmtPop = (v: number) => (v >= 1e9 ? `${v / 1e9} billion` : `${v / 1e6} mil
 const pct = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
 
 export function describeEvent(e: SimEvent, name: (c: number) => string): string {
-  const c = name(e.c), x = e.x ?? {};
+  const c = e.c >= 0 ? name(e.c) : 'World', x = e.x ?? {};
   switch (e.k) {
+    case 'oil_shock':
+      return `World oil price ${e.v! > 0 ? 'surges' : 'collapses'} ${pct(Math.abs(e.v!), 0)} in a year (now ${(x.price * 100).toFixed(0)} on a 2023 = 100 scale).`;
+    case 'inflation_high':
+      return `${c}: inflation climbs above 25% (${e.v!.toFixed(1)}%; expected ${x.expected.toFixed(1)}%, oil price index ${(x.oil * 100).toFixed(0)}).`;
+    case 'inflation_tamed':
+      return `${c} brings inflation back below 10% (${e.v!.toFixed(1)}%; expectations ${x.expected.toFixed(1)}%).`;
     case 'recession_start':
-      return `${c} enters recession: second consecutive quarter of contraction (${pct(e.v!)} q/q; business-cycle component ${pct(x.cycle)}, unemployment ${x.unemp.toFixed(1)}%).`;
+      return `${c} enters recession: second consecutive quarter of contraction (${pct(e.v!)} q/q; output gap ${pct(x.gap ?? x.cycle)} of which domestic ${pct(x.cycle)}, unemployment ${x.unemp.toFixed(1)}%).`;
     case 'recession_end':
       return `${c} returns to growth after ${e.v} quarters of contraction (unemployment ${x.unemp.toFixed(1)}%).`;
     case 'pop_above':

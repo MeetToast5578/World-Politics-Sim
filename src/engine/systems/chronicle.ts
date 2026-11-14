@@ -14,7 +14,7 @@ export function chronicleQuarterly(st: WorldState): void {
     const key = `rec:${c}`;
     if (f.negQ[c] === 2) {
       st.milestones[key] = st.day;
-      emit(st, { k: 'recession_start', c, v: f.gdp[c] / f.gdpPrevQ[c] - 1, x: { cycle: f.cycle[c], unemp: f.unemp[c] } });
+      emit(st, { k: 'recession_start', c, v: f.gdp[c] / f.gdpPrevQ[c] - 1, x: { cycle: f.cycle[c], gap: f.gap[c], unemp: f.unemp[c] } });
     } else if (f.negQ[c] === 0 && st.milestones[key]) {
       emit(st, { k: 'recession_end', c, v: Math.round((st.day - st.milestones[key]) / 91.31) + 1 /* quarters of contraction */, x: { unemp: f.unemp[c] } });
       delete st.milestones[key];
@@ -27,6 +27,22 @@ const levelOf = (x: number, levels: number[]) => { let i = -1; while (i + 1 < le
 
 export function chronicleYearly(st: WorldState): void {
   const { f } = st;
+  // world oil price swings of more than ±30% (log) within a year; c = -1 marks a world event
+  const oilPrev = st.milestones.oilLn;
+  if (oilPrev !== undefined && Math.abs(st.g.oilLn - oilPrev) > 0.3)
+    emit(st, { k: 'oil_shock', c: -1, v: Math.exp(st.g.oilLn - oilPrev) - 1, x: { price: Math.exp(st.g.oilLn) } });
+  st.milestones.oilLn = st.g.oilLn;
+  for (let c = 0; c < st.n; c++) {
+    const ik = `infl:${c}`;
+    if (st.milestones[ik] === undefined) st.milestones[ik] = f.inflation[c] > 25 ? 1 : 0;
+    else if (!st.milestones[ik] && f.inflation[c] > 25) {
+      emit(st, { k: 'inflation_high', c, v: f.inflation[c], x: { expected: f.piE[c], oil: Math.exp(st.g.oilLn), gap: f.gap[c] } });
+      st.milestones[ik] = 1;
+    } else if (st.milestones[ik] && f.inflation[c] < 10) {
+      emit(st, { k: 'inflation_tamed', c, v: f.inflation[c], x: { expected: f.piE[c] } });
+      st.milestones[ik] = 0;
+    }
+  }
   for (let c = 0; c < st.n; c++) {
     const P = totalPop(st, c);
     // population thresholds, in both directions (first crossing of each level only)
