@@ -6,8 +6,8 @@ import { Simulation } from '../engine/sim';
 import { addMonths } from '../engine/calendar';
 import { saveWorld, loadWorld } from '../engine/save';
 import { Rng } from '../engine/rng';
-import { demographyMonthly, demographyYearly } from '../engine/systems/demography';
-import { economyQuarterly } from '../engine/systems/economy';
+import { demographyYearly } from '../engine/systems/demography';
+import { economyQuarterly, economyYearly } from '../engine/systems/economy';
 import { chronicleQuarterly, chronicleYearly } from '../engine/systems/chronicle';
 import type { Baseline } from '../engine/types';
 
@@ -41,12 +41,11 @@ console.log(`rewind (replay 300y) ${tRewind.toFixed(0)} ms`);
 const s2 = new Simulation(b, { seed: 2 });
 const rng = new Rng(3);
 const N = 50;
-const dm = time(() => { for (let i = 0; i < 12 * N; i++) demographyMonthly(s2.st, s2.params); }) / N;
 const dy = time(() => { for (let i = 0; i < N; i++) demographyYearly(s2.st, b, s2.params); }) / N;
-const eq = time(() => { for (let i = 0; i < 4 * N; i++) economyQuarterly(s2.st, s2.params, rng); }) / N;
+const eq = time(() => { for (let i = 0; i < 4 * N; i++) economyQuarterly(s2.st, s2.params, rng, rng, s2.trade); for (let i = 0; i < N; i++) economyYearly(s2.st, b, s2.params, s2.trade); }) / N;
 const cq = time(() => { for (let i = 0; i < 4 * N; i++) chronicleQuarterly(s2.st); }) / N;
 const cy = time(() => { for (let i = 0; i < N; i++) chronicleYearly(s2.st); }) / N;
-console.log(`\nper simulated year:  demography(monthly) ${dm.toFixed(3)} ms | demography(yearly) ${dy.toFixed(3)} ms | economy ${eq.toFixed(3)} ms | chronicle ${(cq + cy).toFixed(3)} ms`);
+console.log(`\nper simulated year:  demography ${dy.toFixed(3)} ms | economy ${eq.toFixed(3)} ms | chronicle ${(cq + cy).toFixed(3)} ms`);
 
 // 4. scaling: replicate the country set k times (synthetic, for cost only)
 console.log('\nscaling (synthetic copies of the baseline):');

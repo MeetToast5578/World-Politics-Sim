@@ -6,7 +6,7 @@ import { Simulation } from './sim';
 import type { Params } from './params';
 
 const FORMAT = 'world-sim-save';
-const VERSION = 1;
+const VERSION = 2; // 2: single-year age × sex cohorts
 
 function toB64(bytes: Uint8Array): string {
   let s = '';
@@ -28,6 +28,7 @@ export function saveWorld(sim: Simulation): string {
     format: FORMAT, version: VERSION, params: sim.params, startDate: sim.startDate ?? null,
     seed: st.seed, startDay: st.startDay, day: st.day, ids: st.ids,
     f: Object.fromEntries(FIELDS.map((k) => [k, f64(st.f[k])])),
+    cohorts: f64(st.cohorts), g: st.g,
     regionOwner: Array.from(st.regionOwner),
     rng: Object.fromEntries(Object.entries(st.rng).map(([k, v]) => [k, Array.from(v)])),
     branches: st.branches, events: st.events, milestones: st.milestones,
@@ -51,6 +52,7 @@ export function loadWorld(baseline: Baseline, json: string): Simulation {
       if (a.length !== n) throw new Error(`Corrupt save: field ${k}`);
       return [k, a];
     })) as Record<Field, Float64Array>,
+    cohorts: new Float64Array(fromB64(s.cohorts).buffer), g: s.g,
     regionOwner: Int16Array.from(s.regionOwner),
     rng: Object.fromEntries(Object.entries(s.rng as Record<string, number[]>).map(([k, v]) => [k, Uint32Array.from(v)])),
     branches: s.branches, events: s.events, milestones: s.milestones,

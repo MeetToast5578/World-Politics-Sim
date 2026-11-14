@@ -2,13 +2,27 @@
 // Parameters are part of a world's identity: they are stored in saves, and changing one changes the timeline.
 export const DEFAULT_PARAMS = {
   // --- demography ---
-  /** Years spent in the 0-14 cohort; flow 0-14 -> 15-64 = p0 / 15 per year (uniform-age-within-cohort assumption). */
-  childYears: 15,
-  /** Years spent in 15-64; flow 15-64 -> 65+ = p1 / 50 per year (same assumption; biased for non-stationary populations). */
-  workYears: 50,
-  /** Age-specific mortality m_i(e0) = a_i * exp(-b_i (e0 - 70)). Rough shape fitted by hand to typical UN WPP
-   *  life-table patterns; the level is re-calibrated per country so baseline deaths match the WDI crude death rate. */
-  mort: { a: [0.0012, 0.0035, 0.05], b: [0.13, 0.06, 0.025] },
+  /** Siler mortality shape (a1, a2 are solved per country/sex from data):
+   *  b1 childhood decline rate — with 1.5, ~78% of under-5 deaths fall in the first year, typical of life tables;
+   *  b2 Gompertz slope — adult mortality doubles every ~7.7 years (b2 = 0.09; literature 0.08-0.10);
+   *  background hazard c = cA1·a1 + c0 (assumption: tied to the childhood level). */
+  siler: { b1: 1.5, b2: 0.09, cA1: 0.02, c0: 2e-4 },
+  /** Mean age and spread (years) of the age-specific fertility schedule. World mean age of childbearing is ~28
+   *  (UN WPP); one value for all countries until a per-country timing source is available. Assumption. */
+  fertMean: 28,
+  fertSd: 6.0,
+  /** Share of first-year infant mortality incurred within the calendar year of birth (most infant deaths are
+   *  neonatal; assumption). */
+  infantSeparation: 0.8,
+  /** TFR curve drift (estimated in the data build from the 10-year panel before the baseline) applied with fading:
+   *  effective drift years = fadeYears·(1 − e^(−t/fadeYears)). fadeYears is an assumption: a decade-long trend is not
+   *  extrapolated indefinitely. Long-run fertility is the largest demographic uncertainty (DESIGN.md §8). */
+  fertilityDrift: { on: true, fadeYears: 20 },
+  /** Decay time (years) of each country's net migration rate toward zero. UN WPP likewise assumes long-run convergence
+   *  of migration; stands in for a push/pull migration model (Phase 5). Assumption. */
+  migrationYears: 25,
+  /** Cap on net emigration per year as a share of population (assumption; guards against frozen extreme rates). */
+  maxEmigration: 0.02,
   /** Relaxation time (years) of TFR and life expectancy toward the income-implied level (assumption). */
   transitionYears: 15,
   /** Decay time (years) of each country's residual from the cross-sectional regression (assumption). */
@@ -34,6 +48,24 @@ export const DEFAULT_PARAMS = {
   /** Share of business-cycle innovation variance that is a common world shock. Kose, Otrok & Whiteman (2003) attribute
    *  roughly 10-40% of output-growth variance to a world factor (higher for advanced economies). Assumption: 0.25. */
   globalShockShare: 0.25,
+  /** Investment-share response to the business cycle (pp per 1% output gap). Investment is ~2-3x as volatile as
+   *  GDP in national accounts; 1.0 gives that order of magnitude with s ≈ 0.25. Assumption. */
+  investCyclical: 1.0,
+  /** Gravity trade network (systems/trade.ts). Distance elasticity ~0.9-1.0 and contiguity coefficient ~0.5-0.7 are
+   *  the central estimates of Head & Mayer (2014). spillover = domestic value-added share of gross exports (~0.7, OECD
+   *  TiVA) × income elasticity of partner import demand (~1): a partner's 1% domestic downturn lowers the exporter's
+   *  output by 0.7 × (exports to that partner / GDP) percent. frontierWeight: share of the catch-up target given by the
+   *  world frontier vs. the TFP of import sources (assumption, to calibrate). */
+  trade: { partners: 20, distElasticity: 1.0, contiguity: 0.6, minDistKm: 150, spillover: 0.7, frontierWeight: 0.5 },
+  /** World oil price: log deviation from baseline follows a quarterly AR(1). rho 0.95 ≈ 3.4-year half-life; sd 0.10 per
+   *  quarter ≈ 20-30% annual volatility of real oil prices. energyCostShare ≈ energy spending / GDP (assumption),
+   *  incomeEffect = share of the terms-of-trade windfall or loss (exposure × log price deviation) that shows up in output,
+   *  cpiWeight ≈ energy weight in consumer price baskets. All assumptions. */
+  oil: { rho: 0.95, sd: 0.1, energyCostShare: 0.06, incomeEffect: 0.5, cpiWeight: 0.06 },
+  /** Inflation: target 3%/yr; Phillips slope 0.25 pp per 1% gap (estimates 0.1-0.3); expectations converge to the
+   *  target at anchorSpeed × credibility and to realised inflation at adaptSpeed × (1 − credibility), per year;
+   *  credibility = absorptive capacity (WGI government effectiveness). Assumptions. */
+  inflation: { target: 3, phillips: 0.25, anchorSpeed: 1.0, adaptSpeed: 1.0 },
   /** Okun coefficient: unemployment-rate change (pp) per 1% output gap. Okun's law estimates ~0.3-0.5. */
   okun: 0.4,
 

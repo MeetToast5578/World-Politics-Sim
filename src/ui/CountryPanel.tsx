@@ -5,6 +5,7 @@ import type { SimEvent } from '../engine/state';
 import { describeEvent } from '../engine/describe';
 import { formatDate } from '../engine/calendar';
 import { LineChart } from './LineChart';
+import { Pyramid } from './Pyramid';
 import { fmtNum, fmtPct, fmtUsd } from './format';
 import { GOV_LABELS } from './mapModes';
 
@@ -34,18 +35,23 @@ export function CountryPanel({ baseline: b, detail, events, name, onClose }: Pro
     ['Population', fmtNum(P), fmtNum(bf.pop?.v ?? NaN), 'pop'],
     ['  aged 0–14 / 65+', `${fmtPct(f.p0 / P)} / ${fmtPct(f.p2 / P)}`, `${fmtNum(bf.pop0014?.v ?? NaN)}% / ${fmtNum(bf.pop65?.v ?? NaN)}%`, 'pop65'],
     ['Fertility (TFR)', f.tfr.toFixed(2), fmtNum(bf.tfr?.v ?? NaN), 'tfr'],
-    ['Life expectancy', f.lifeExp.toFixed(1), fmtNum(bf.lifeExp?.v ?? NaN), 'lifeExp'],
-    ['Net migration rate', `${(f.migRate * 1000).toFixed(1)}‰/yr`, fmtNum(bf.netMigration?.v ?? NaN), 'netMigration'],
+    ['Life expectancy F / M', `${f.e0F.toFixed(1)} / ${f.e0M.toFixed(1)}`, `${fmtNum(bf.lifeExpF?.v ?? NaN)} / ${fmtNum(bf.lifeExpM?.v ?? NaN)}`, 'lifeExpF'],
+    ['Under-5 mortality F / M', `${(f.u5F * 1000).toFixed(1)} / ${(f.u5M * 1000).toFixed(1)} ‰`, `${fmtNum(bf.u5mrF?.v ?? NaN)} / ${fmtNum(bf.u5mrM?.v ?? NaN)} ‰`, 'u5mrF'],
+    ['Births / deaths last year', `${fmtNum(f.births)} / ${fmtNum(f.deaths)}`, `CBR ${fmtNum(bf.cbr?.v ?? NaN)}‰ · CDR ${fmtNum(bf.cdr?.v ?? NaN)}‰`, 'cbr'],
+    ['Net migration last year', fmtNum(f.netMig), fmtNum(bf.netMigration?.v ?? NaN), 'netMigration'],
     ['GDP (2023 USD)', fmtUsd(f.gdp), fmtUsd(bf.gdp?.v ?? NaN), 'gdp'],
     ['GDP per capita', fmtUsd(f.gdp / P), fmtUsd((bf.gdp?.v ?? NaN) / (bf.pop?.v ?? NaN)), undefined],
     ['GDP per capita (PPP)', fmtUsd((f.gdp * f.pppRatio) / P), fmtUsd((bf.gdpPpp?.v ?? NaN) / (bf.pop?.v ?? NaN)), 'gdpPpp'],
     ['Unemployment', `${f.unemp.toFixed(1)}%`, `${fmtNum(bf.unemployment?.v ?? NaN)}%`, 'unemployment'],
+    ['Inflation', `${f.inflation.toFixed(1)}% (expected ${f.piE.toFixed(1)}%)`, `${fmtNum(bf.inflation?.v ?? NaN)}%`, 'inflation'],
     ['Investment / GDP', fmtPct(f.sInv), `${fmtNum(bf.investment?.v ?? NaN)}%`, 'investment'],
+    ['Agriculture / industry', `${fmtPct(f.agriShare)} / ${fmtPct(f.indShare)}`, `${fmtNum(bf.agriShare?.v ?? NaN)}% / ${fmtNum(bf.industryShare?.v ?? NaN)}%`, 'agriShare'],
+    ['Trade / GDP', `${f.tradeShare.toFixed(0)}%`, `${fmtNum(bf.trade?.v ?? NaN)}%`, 'trade'],
+    ['Hydrocarbon rents / GDP', fmtPct(f.rents), '', 'oilRents'],
     ['Public debt / GDP', fmtPct(f.debt / f.gdp, 0), `${fmtNum(bf.govDebt?.v ?? NaN)}%`, 'govDebt'],
     ['Revenue / GDP', fmtPct(f.revShare), `${fmtNum(bf.govRevenue?.v ?? NaN)}%`, 'govRevenue'],
     ['Military spending / GDP', bf.milexShare ? fmtPct(f.milexShare) : '—', bf.milexShare ? `${fmtNum(bf.milexShare.v)}%` : '—', 'milexShare'],
     ['Armed forces', bf.armedForces ? fmtNum(f.afRate * f.p1) : '—', fmtNum(bf.armedForces?.v ?? NaN), 'armedForces'],
-    ['Inflation (baseline only)', '—', `${fmtNum(bf.inflation?.v ?? NaN)}%`, 'inflation'],
   ];
   const h = detail.history;
   const myEvents = events.filter((e) => e.c === detail.c || e.o === detail.c).slice(-40).reverse();
@@ -68,6 +74,7 @@ export function CountryPanel({ baseline: b, detail, events, name, onClose }: Pro
       </section>
 
       <section className="charts">
+        <Pyramid f={detail.pyramid.f} m={detail.pyramid.m} />
         <LineChart label="Population" years={h.years} values={h.series.pop} fmt={(v) => fmtNum(v)} />
         <LineChart label="GDP per capita (2023 USD)" years={h.years} values={h.series.gdpPc} fmt={fmtUsd} />
         <LineChart label="Fertility rate" years={h.years} values={h.series.tfr} fmt={(v) => v.toFixed(2)} />

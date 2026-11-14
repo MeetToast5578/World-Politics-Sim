@@ -1,16 +1,24 @@
-// Economy (quarterly): Cobb-Douglas production Y = A K^α L^(1-α) e^cycle, all in constant 2023 USD (annualised).
-//  - capital accumulates from the observed investment share, depreciates at δ
-//  - TFP grows at the frontier rate plus catch-up proportional to the log gap, scaled by absorptive capacity (institutions)
-//  - a per-country AR(1) business cycle (with a common world shock), volatility calibrated to 2000-2019 real GDP growth
-//  - unemployment moves with the cycle (Okun); labour = working-age pop × participation × (1 - u)
-//  - public debt follows the budget identity with a Bohn-type fiscal reaction (stand-in for Phase 3 politics),
-//    and is restructured (sovereign default) when interest payments exceed a share of revenue
+// Economy (quarterly unless noted). Output Y = A K^α L^(1-α) e^c in constant base-year USD (annualised).
+//  - capital: K' = K + (s·Y − δK)Δt; s = structural share (relaxes yearly toward an income curve + residual) plus a
+//    procyclical term
+//  - TFP: frontier growth plus catch-up on a gap measured against a mix of the world frontier and the TFP of the
+//    country's import sources (technology diffuses through trade), scaled by absorptive capacity (institutions)
+//  - output gap = domestic cycle u (AR(1) with a common world shock) + export-share-weighted domestic cycles of trading
+//    partners (one round of transmission, so no feedback loop can explode) + terms-of-trade effect of the oil price
+//    level (hydrocarbon rents vs. energy-import costs)
+//  - unemployment by Okun's law; labour = working-age pop × participation × (1 − u)
+//  - inflation: Phillips curve on the cycle + energy pass-through; expectations anchored to a target in proportion
+//    to institutional credibility, otherwise adaptive; surprise inflation erodes real public debt
+//  - public debt: budget identity, Bohn fiscal reaction, sovereign default when interest/revenue is too high
 //  - military capital = perpetual inventory of military spending
-// Not modelled yet (Phase 2+): sectors, prices/inflation, trade flows, exchange rates (PPP ratio is held fixed).
+//  - yearly: sector shares (agriculture, industry, services) relax toward income curves; trade openness recomputed
+// Not modelled yet: exchange rates (PPP ratio fixed), multiple goods, resource depletion, monetary policy rates.
 import type { Baseline } from '../types';
 import type { Params } from '../params';
 import type { Rng } from '../rng';
 import type { WorldState } from '../state';
+import { curveAt, gdpPppPc } from './demography';
+import { exportShare, tradeOpenness, type TradeNet } from './trade';
 
 const DT = 0.25;
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
@@ -36,7 +44,7 @@ export function initEconomy(st: WorldState, b: Baseline, p: Params): void {
     f.lfRate[c] = clamp(v('laborForce') / f.p1[c], 0.2, 1.0);
     f.K[c] = p.capitalOutput * Y;
     f.A[c] = Y / (f.K[c] ** p.alpha * labour(st, c) ** (1 - p.alpha));
-    f.sInv[c] = clamp(v('investment') / 100, 0.05, 0.6);
+    f.sStruct[c] = f.sInv[c] = clamp(v('investment') / 100, 0.05, 0.6);
     f.cycleSd[c] = clamp(v('growthSd') / 100, 0.005, 0.08) / cycleScale(p.cycleRho);
     f.wgiVoice[c] = v('wgiVoice'); f.wgiStability[c] = v('wgiStability'); f.wgiEffectiveness[c] = v('wgiEffectiveness');
     f.wgiRuleOfLaw[c] = v('wgiRuleOfLaw'); f.wgiCorruption[c] = v('wgiCorruption');
@@ -50,9 +58,25 @@ export function initEconomy(st: WorldState, b: Baseline, p: Params): void {
     f.milexShare[c] = v('milexShare', 0) / 100;
     f.milCap[c] = (f.milexShare[c] * Y) / p.milDepreciation; // steady state of the perpetual inventory
     f.afRate[c] = v('armedForces', 0) / f.p1[c];
-    f.inflation[c] = v('inflation', NaN);
-    f.tradeShare[c] = v('trade', NaN);
+    f.inflation[c] = f.piE[c] = v('inflation');
+    // energy exposure: hydrocarbon rents (exporters) minus energy import dependence × energy cost share (importers)
+    f.rents[c] = (v('oilRents', 0) + v('gasRents', 0) + v('coalRents', 0)) / 100;
+    f.oilExp[c] = f.rents[c] - p.oil.energyCostShare * Math.max(0, v('energyImportsShare') / 100);
+    f.agriShare[c] = v('agriShare') / 100;
+    f.indShare[c] = v('industryShare') / 100;
+    f.tradeShare[c] = v('trade');
   });
+}
+
+/** Residuals against the income curves (must run after demography init so GDP per capita is defined). */
+export function initEconomyResiduals(st: WorldState, b: Baseline): void {
+  const cv = b.meta.curves, f = st.f;
+  for (let c = 0; c < st.n; c++) {
+    const y = gdpPppPc(st, c);
+    f.agriResid[c] = f.agriShare[c] - curveAt(cv.agriShare, y) / 100;
+    f.indResid[c] = f.indShare[c] - curveAt(cv.industryShare, y) / 100;
+    f.invResid[c] = f.sStruct[c] - curveAt(cv.investment, y) / 100;
+  }
 }
 
 /** Real rate on public debt: base rate plus a premium on debt above the higher of 60% of GDP and the country's
@@ -61,32 +85,61 @@ export function interestRate(p: Params, debtRatio: number, refRatio: number): nu
   return p.realRate + p.riskPremium * Math.max(0, debtRatio - Math.max(0.6, refRatio));
 }
 
-export function economyQuarterly(st: WorldState, p: Params, rng: Rng, onDefault?: (c: number, x: Record<string, number>) => void): void {
+export function economyQuarterly(st: WorldState, p: Params, rng: Rng, oilRng: Rng, trade: TradeNet,
+  onDefault?: (c: number, x: Record<string, number>) => void): void {
   const { f, n } = st;
+  // world oil price: mean-reverting log deviation from baseline
+  const oilPrev = st.g.oilLn;
+  st.g.oilLn = p.oil.rho * oilPrev + p.oil.sd * oilRng.normal();
+  st.g.oilDln = st.g.oilLn - oilPrev;
+
   let lnAf = -Infinity;
   for (let c = 0; c < n; c++) if (labour(st, c) >= p.frontierMinLabor) lnAf = Math.max(lnAf, Math.log(f.A[c]));
-  // One world shock per quarter, shared by all countries: lets synchronised global downturns emerge.
-  const world = rng.normal(), wg = Math.sqrt(p.globalShockShare), wi = Math.sqrt(1 - p.globalShockShare);
+  // 1. TFP catch-up target: mix of world frontier and import-weighted TFP of trading partners (all read before any update)
+  const growthA = new Float64Array(n);
   for (let c = 0; c < n; c++) {
-    const lnA = Math.log(f.A[c]);
-    const gap = Math.max(0, lnAf - lnA);
-    f.A[c] = Math.exp(lnA + (p.frontierGrowth + p.catchUp * f.absorb[c] * gap) * DT);
-    // shock drawn for every country in index order, so the draw sequence never depends on state
-    f.cycle[c] = p.cycleRho * f.cycle[c] + f.cycleSd[c] * (wg * world + wi * rng.normal());
-    f.unemp[c] = Math.max(0.5, f.unempStar[c] - p.okun * f.cycle[c] * 100);
+    const ps = trade.partners[c], lnA = Math.log(f.A[c]);
+    let impW = 0, impLnA = 0;
+    for (let k = 0; k < ps.length; k++) { const w = trade.a[ps[k]] * f.gdp[ps[k]] * trade.dist[c][k]; impW += w; impLnA += w * Math.log(f.A[ps[k]]); } // w ∝ imports of c from j
+    const partnerGap = impW > 0 ? impLnA / impW - lnA : 0;
+    const gap = Math.max(0, p.trade.frontierWeight * (lnAf - lnA) + (1 - p.trade.frontierWeight) * partnerGap);
+    growthA[c] = p.frontierGrowth + p.catchUp * f.absorb[c] * gap;
+  }
+  // 2. domestic cycles; one world shock per quarter is shared by all countries (synchronised downturns can emerge).
+  //    Draws happen for every country in index order, so the random sequence never depends on state.
+  const world = rng.normal(), wg = Math.sqrt(p.globalShockShare), wi = Math.sqrt(1 - p.globalShockShare);
+  for (let c = 0; c < n; c++) f.cycle[c] = p.cycleRho * f.cycle[c] + f.cycleSd[c] * (wg * world + wi * rng.normal());
+  // 3. output gaps: own cycle + partners' domestic cycles weighted by export shares + oil terms of trade
+  const gapNew = new Float64Array(n);
+  for (let c = 0; c < n; c++) {
+    let spill = 0;
+    for (let k = 0; k < trade.partners[c].length; k++) spill += exportShare(trade, f.gdp, c, k) * f.cycle[trade.partners[c][k]];
+    gapNew[c] = f.cycle[c] + p.trade.spillover * spill + p.oil.incomeEffect * f.oilExp[c] * st.g.oilLn;
+  }
+  for (let c = 0; c < n; c++) {
+    f.A[c] *= Math.exp(growthA[c] * DT);
+    f.gap[c] = gapNew[c];
+    f.unemp[c] = Math.max(0.5, f.unempStar[c] - p.okun * f.gap[c] * 100);
     const Yprev = f.gdp[c];
-    const Y = f.A[c] * f.K[c] ** p.alpha * labour(st, c) ** (1 - p.alpha) * Math.exp(f.cycle[c]);
+    const Y = f.A[c] * f.K[c] ** p.alpha * labour(st, c) ** (1 - p.alpha) * Math.exp(f.gap[c]);
     f.gdpPrevQ[c] = Yprev;
     f.gdp[c] = Y;
     f.negQ[c] = Y < Yprev ? f.negQ[c] + 1 : 0;
+    f.sInv[c] = clamp(f.sStruct[c] + p.investCyclical * f.gap[c], 0.05, 0.6);
     f.K[c] += (f.sInv[c] * Y - p.delta * f.K[c]) * DT;
-    // budget identity: Δdebt = (primary spending - revenue) + interest
+    // inflation (annual %): expectations + Phillips curve + energy pass-through (annualised quarterly log change)
+    const piQ = f.piE[c] + p.inflation.phillips * 100 * f.gap[c] + p.oil.cpiWeight * st.g.oilDln * 400;
+    const surprise = piQ - f.piE[c];
+    f.inflation[c] += (piQ - f.inflation[c]) * 0.25; // smoothed to approximate a year-on-year rate
+    const cred = f.absorb[c];
+    f.piE[c] += DT * (cred * p.inflation.anchorSpeed * (p.inflation.target - f.piE[c]) + (1 - cred) * p.inflation.adaptSpeed * (piQ - f.piE[c]));
+    // budget identity: Δdebt = (primary spending − revenue) + interest; unexpected inflation erodes real debt
     const d = f.debt[c] / Y;
     const pb = f.pb0[c] + p.bohn * (d - f.debtRatio0[c]);
     f.primSpendShare[c] = f.revShare[c] - pb;
     const interest = interestRate(p, d, f.debtRatio0[c]) * f.debt[c];
-    // shortcut: gross debt floors at 0; surpluses beyond that are not tracked as sovereign assets (Phase 2).
-    f.debt[c] = Math.max(0, f.debt[c] + ((f.primSpendShare[c] - f.revShare[c]) * Y + interest) * DT);
+    // shortcut: gross debt floors at 0; surpluses beyond that are not tracked as sovereign assets.
+    f.debt[c] = Math.max(0, f.debt[c] * Math.exp((-surprise / 100) * DT) + ((f.primSpendShare[c] - f.revShare[c]) * Y + interest) * DT);
     // Sovereign default: when interest absorbs too much revenue, debt is restructured with a haircut and output falls.
     const burden = interest / (f.revShare[c] * Y);
     if (burden > p.defaultBurden) {
@@ -96,5 +149,19 @@ export function economyQuarterly(st: WorldState, p: Params, rng: Rng, onDefault?
       f.cycle[c] -= p.defaultOutputLoss;
     }
     f.milCap[c] += (f.milexShare[c] * Y - p.milDepreciation * f.milCap[c]) * DT;
+  }
+}
+
+/** Yearly structural update: sector shares and structural investment relax toward income curves. */
+export function economyYearly(st: WorldState, b: Baseline, p: Params, trade: TradeNet): void {
+  const cv = b.meta.curves, f = st.f;
+  const relax = 1 - Math.exp(-1 / p.transitionYears), decay = Math.exp(-1 / p.residualYears);
+  for (let c = 0; c < st.n; c++) {
+    f.agriResid[c] *= decay; f.indResid[c] *= decay; f.invResid[c] *= decay;
+    const y = gdpPppPc(st, c);
+    f.agriShare[c] += (clamp(curveAt(cv.agriShare, y) / 100 + f.agriResid[c], 0.002, 0.8) - f.agriShare[c]) * relax;
+    f.indShare[c] += (clamp(curveAt(cv.industryShare, y) / 100 + f.indResid[c], 0.05, 0.85) - f.indShare[c]) * relax;
+    f.sStruct[c] += (clamp(curveAt(cv.investment, y) / 100 + f.invResid[c], 0.05, 0.6) - f.sStruct[c]) * relax;
+    f.tradeShare[c] = tradeOpenness(trade, f.gdp, c);
   }
 }

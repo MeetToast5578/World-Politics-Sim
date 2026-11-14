@@ -12,7 +12,7 @@ export function WorldPanel({ frame, name, onSelect }: { frame: Frame; name: (c: 
         <div><span>Population</span><b>{fmtNum(w.pop)}</b></div>
         <div><span>GDP (2023 USD)</span><b>{fmtUsd(w.gdp)}</b></div>
         <div><span>Aged 65+</span><b>{fmtPct(w.old)}</b></div>
-        <div><span>Events</span><b>{w.events}</b></div>
+        <div><span>Oil price (2023 = 100)</span><b>{(w.oil * 100).toFixed(0)}</b></div>
       </section>
       <section className="charts">
         <LineChart label="World population" years={w.years} values={w.popSeries} fmt={(v) => fmtNum(v)} />

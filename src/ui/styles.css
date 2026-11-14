@@ -1,6 +1,6 @@
 :root {
   --bg: #0d1117; --panel: #151b24; --panel2: #1b2330; --line: #283142; --text: #d8dee9; --muted: #8b95a7;
-  --accent: #6cb6ff; --warn: #f2c94c; --bad: #ff7b72;
+  --accent: #6cb6ff; --male: #6cb6ff; --female: #f0883e; --warn: #f2c94c; --bad: #ff7b72;
   font: 13px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text); background: var(--bg);
 }
@@ -64,6 +64,7 @@ h2 { margin: 0; font-size: 18px; } h3 { margin: 14px 0 6px; font-size: 12px; tex
 .chart { background: var(--panel2); border-radius: 6px; padding: 6px 8px; }
 .chart-head { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); } .chart-head b { color: var(--text); }
 .chart svg { width: 100%; height: 64px; display: block; }
+.male { color: var(--male); } .female { color: var(--female); }
 .chart-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
 .chart-empty { color: var(--muted); font-size: 11px; padding: 18px 0; text-align: center; }
 table.stats { width: 100%; border-collapse: collapse; font-size: 12px; }

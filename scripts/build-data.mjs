@@ -2,7 +2,9 @@
 //   public/data/world.topo.json   region geometry (Natural Earth 1:50m, public domain)
 //   public/data/baseline.json     countries, regions, sourced indicators, fitted regressions
 // Every country field is {v, y, s}: value, reference year, source id (see SOURCES).
-// Run: npm run data   (needs network; raw downloads are cached in .cache/)
+// Run: npm run data                 -> baseline.json (reference year 2023) + world.topo.json
+//      npm run data -- --year 2000   -> baseline-2000.json (for backtesting; same geometry and entities)
+// Needs network; raw downloads are cached in .cache/.
 import fs from 'node:fs';
 import path from 'node:path';
 import { topology } from 'topojson-server';
@@ -15,8 +17,13 @@ const OUT = path.join(ROOT, 'public', 'data');
 fs.mkdirSync(CACHE, { recursive: true });
 fs.mkdirSync(OUT, { recursive: true });
 
-const REF_YEAR = 2023; // baseline reference year; older observations accepted back to MIN_YEAR
-const MIN_YEAR = 2015;
+const yearArg = process.argv.indexOf('--year');
+const REF_YEAR = yearArg > 0 ? Number(process.argv[yearArg + 1]) : 2023; // reference year; older observations accepted back to MIN_YEAR
+const MIN_YEAR = REF_YEAR - 8;
+const OUT_NAME = REF_YEAR === 2023 ? 'baseline.json' : `baseline-${REF_YEAR}.json`;
+// Growth volatility window: the 20 years before the reference year, excluding the 2020 COVID shock.
+const VOL_TO = Math.min(REF_YEAR - 1, 2019), VOL_FROM = VOL_TO - 19;
+const AGE_GROUPS = ['0004', '0509', '1014', '1519', '2024', '2529', '3034', '3539', '4044', '4549', '5054', '5559', '6064', '6569', '7074', '7579', '80UP'];
 const EARTH_R_KM = 6371.0088;
 
 const SOURCES = {
@@ -41,7 +48,7 @@ const WDI = {
   tfr: ['WDI', 'SP.DYN.TFRT.IN', 'wavg'],
   lifeExp: ['WDI', 'SP.DYN.LE00.IN', 'wavg'],
   urban: ['WDI', 'SP.URB.TOTL.IN.ZS', 'wavg'],
-  netMigration: ['WDI', 'SM.POP.NETM', 'sum'],
+  netMigration: ['WDI', 'SM.POP.NETM', 'sum', 'mean'], // mean over the window: single years carry episodic flows (wars, returns)
   laborForce: ['WDI', 'SL.TLF.TOTL.IN', 'sum'],
   unemployment: ['WDI', 'SL.UEM.TOTL.ZS', 'wavg'],
   gdp: ['WDI', 'NY.GDP.MKTP.CD', 'sum'],
@@ -56,6 +63,20 @@ const WDI = {
   armedForces: ['WDI', 'MS.MIL.TOTL.P1', 'sum'],
   arableShare: ['WDI', 'AG.LND.ARBL.ZS', 'wavg'],
   energyImportsShare: ['WDI', 'EG.IMP.CONS.ZS', 'wavg'],
+  gdpReal: ['WDI', 'NY.GDP.MKTP.KD', 'sum'],
+  femaleShare: ['WDI', 'SP.POP.TOTL.FE.ZS', 'wavg'],
+  srb: ['WDI', 'SP.POP.BRTH.MF', 'wavg'],
+  // SP.ADO.TFRT (adolescent fertility) would pin the fertility schedule's timing, but the API returns HTTP 400 for it (Nov 2026).
+  lifeExpF: ['WDI', 'SP.DYN.LE00.FE.IN', 'wavg'],
+  lifeExpM: ['WDI', 'SP.DYN.LE00.MA.IN', 'wavg'],
+  u5mrF: ['WDI', 'SH.DYN.MORT.FE', 'wavg'],
+  u5mrM: ['WDI', 'SH.DYN.MORT.MA', 'wavg'],
+  oilRents: ['WDI', 'NY.GDP.PETR.RT.ZS', 'gavg'],
+  gasRents: ['WDI', 'NY.GDP.NGAS.RT.ZS', 'gavg'],
+  coalRents: ['WDI', 'NY.GDP.COAL.RT.ZS', 'gavg'],
+  mineralRents: ['WDI', 'NY.GDP.MINR.RT.ZS', 'gavg'],
+  // 5-year age groups, % of the female / male population
+  ...Object.fromEntries(AGE_GROUPS.flatMap((g) => [[`f${g}`, ['WDI', `SP.POP.${g}.FE.5Y`, 'wavg']], [`m${g}`, ['WDI', `SP.POP.${g}.MA.5Y`, 'wavg']]])),
   wgiVoice: ['WGI', 'GOV_WGI_VA.EST', 'wavg'],
   wgiStability: ['WGI', 'GOV_WGI_PV.EST', 'wavg'],
   wgiEffectiveness: ['WGI', 'GOV_WGI_GE.EST', 'wavg'],
@@ -70,7 +91,9 @@ const IMF = {
 };
 // Fields where a missing value is better left missing than imputed (shown as "no data").
 // milexShare: missing mostly means "no armed forces" (Iceland-type) or "no reliable data" (e.g. North Korea); neither is a regional median.
-const NO_IMPUTE = new Set(['armedForces', 'netMigration', 'milexShare']);
+// Resource rents: missing almost always means no extraction (small islands, city states); a regional median would invent oil.
+// gdpReal is only a backtest target.
+const NO_IMPUTE = new Set(['armedForces', 'netMigration', 'milexShare', 'oilRents', 'gasRents', 'coalRents', 'mineralRents', 'gdpReal']);
 
 async function cached(name, url, opts = {}) {
   const f = path.join(CACHE, name);
@@ -91,37 +114,39 @@ async function cached(name, url, opts = {}) {
 
 // --- World Bank -------------------------------------------------------------
 const WB_NAME_FIX = { 'Taiwan, China': 'TWN' };
-async function wbIndicator(code, source) {
+async function wbIndicator(code, source, stat = 'latest', from = MIN_YEAR, to = REF_YEAR) {
   const src = source === 'WGI' ? '&source=3' : '&source=2'; // explicit source avoids slow/hanging API routes
   const url = (d) => `https://api.worldbank.org/v2/country/all/indicator/${code}?format=json&per_page=20000&date=${d}${src}`;
   let rows;
   try {
-    rows = JSON.parse(await cached(`wb_${code}.json`, url(`${MIN_YEAR}:${REF_YEAR}`)))[1] || [];
+    rows = JSON.parse(await cached(`wb_${code}_${from}_${to}.json`, url(`${from}:${to}`)))[1] || [];
   } catch {
     // some series return 502 for multi-year ranges; fall back to one request per year
     rows = [];
-    for (let y = REF_YEAR; y >= MIN_YEAR; y--) rows.push(...(JSON.parse(await cached(`wb_${code}_${y}.json`, url(y)))[1] || []));
+    for (let y = to; y >= from; y--) rows.push(...(JSON.parse(await cached(`wb_${code}_${y}.json`, url(y)))[1] || []));
   }
-  const best = {}; // iso3 -> {v, y}
+  const best = {}, sum = {}; // iso3 -> {v, y}
   for (const r of rows) {
     const iso = r.countryiso3code || WB_NAME_FIX[r.country.value];
     if (!iso || r.value == null) continue;
     const y = +r.date;
     if (!best[iso] || y > best[iso].y) best[iso] = { v: r.value, y };
+    (sum[iso] ??= []).push(r.value);
   }
+  if (stat === 'mean') for (const iso of Object.keys(best)) best[iso].v = sum[iso].reduce((a, b) => a + b, 0) / sum[iso].length;
   return best;
 }
 
-// Standard deviation of annual real GDP growth 2000-2019 (excludes the COVID shock). Needs >= 10 observations.
+// Standard deviation of annual real GDP growth over VOL_FROM..VOL_TO (excludes the COVID shock). Needs >= 10 observations.
 async function growthVolatility() {
-  const txt = await cached('wb_growth_2000_2019.json', 'https://api.worldbank.org/v2/country/all/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=20000&date=2000:2019&source=2');
+  const txt = await cached(`wb_growth_${VOL_FROM}_${VOL_TO}.json`, `https://api.worldbank.org/v2/country/all/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=20000&date=${VOL_FROM}:${VOL_TO}&source=2`);
   const by = {};
   for (const r of JSON.parse(txt)[1] || []) if (r.countryiso3code && r.value != null) (by[r.countryiso3code] ??= []).push(r.value);
   const out = {};
   for (const [iso, xs] of Object.entries(by)) {
     if (xs.length < 10) continue;
     const m = xs.reduce((a, b) => a + b, 0) / xs.length;
-    out[iso] = { v: Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1)), y: 2019 };
+    out[iso] = { v: Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1)), y: VOL_TO };
   }
   return out;
 }
@@ -262,7 +287,11 @@ async function main() {
 
   // Indicators
   const ind = {};
-  for (const [field, [src, code]] of Object.entries(WDI)) { ind[field] = await wbIndicator(code, src); process.stdout.write('.'); }
+  // fetch World Bank series 6 at a time (the API is slow per request, not rate-limited at this level)
+  const queue = Object.entries(WDI);
+  await Promise.all(Array.from({ length: 6 }, async () => {
+    for (let job = queue.shift(); job; job = queue.shift()) { const [field, [src, code, , stat]] = job; ind[field] = await wbIndicator(code, src, stat); process.stdout.write('.'); }
+  }));
   for (const [field, [, code]] of Object.entries(IMF)) {
     const raw = await imfIndicator(code);
     ind[field] = {};
@@ -286,7 +315,7 @@ async function main() {
     };
   });
 
-  const allFields = { ...WDI, ...IMF, growthSd: ['WDI', 'NY.GDP.MKTP.KD.ZG (sd 2000-2019)', 'gavg'] };
+  const allFields = { ...WDI, ...IMF, growthSd: ['WDI', `NY.GDP.MKTP.KD.ZG (sd ${VOL_FROM}-${VOL_TO})`, 'gavg'] };
   for (const c of countries) {
     // weights for averages: data population / GDP of each member (or NE estimate)
     const w = (m, key) => ind[key][m.dataCode]?.v ?? (key === 'pop' ? m.nePop : m.neGdpMd * 1e6) ?? 0;
@@ -355,7 +384,42 @@ async function main() {
     }
     return { knots, n: pts.length, x: 'ln(PPP GDP per capita, current intl $)' };
   };
-  const curves = { tfr: curve('tfr'), lifeExp: curve('lifeExp') };
+  const curves = Object.fromEntries(['tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM', 'agriShare', 'industryShare', 'investment'].map((k) => [k, curve(k)]));
+
+  // Curve drift: the same binned curves from a cross-section EARLY_YEAR = REF_YEAR - 10 (latest observation in the five
+  // years up to it), interpolated at the later knots. drift[k] = change per year at knot k (log change for TFR and
+  // under-5 mortality). Only information up to REF_YEAR is used, so the 2000 baseline's drift (1990 -> 2000) keeps the
+  // backtest out-of-sample.
+  const EARLY = REF_YEAR - 10;
+  const early = {};
+  for (const k of ['pop', 'gdpPpp', 'tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM']) early[k] = await wbIndicator(WDI[k][1], 'WDI', 'latest', EARLY - 5, EARLY);
+  const interp = (knots, x) => {
+    if (x <= knots[0][0]) return knots[0][1];
+    for (let i = 1; i < knots.length; i++) if (x <= knots[i][0]) { const t = (x - knots[i - 1][0]) / (knots[i][0] - knots[i - 1][0]); return knots[i - 1][1] + t * (knots[i][1] - knots[i - 1][1]); }
+    return knots[knots.length - 1][1];
+  };
+  for (const k of ['tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM']) {
+    // within-country change not explained by moving along today's curve, per year
+    const log = k === 'tfr' || k.startsWith('u5');
+    const tr = (y) => (log ? Math.log(y) : y);
+    const pts = [];
+    for (const c of countries) {
+      const code = c.members[0].dataCode, f = c.fields;
+      if (!(early.pop[code]?.v >= 5e5 && early.gdpPpp[code] && early[k][code] && f[k]?.s === 'WDI' && f.gdpPpp?.s === 'WDI')) continue;
+      const x0 = Math.log(early.gdpPpp[code].v / early.pop[code].v), x1 = Math.log(f.gdpPpp.v / f.pop.v);
+      const years = f[k].y - early[k][code].y;
+      if (years < 5) continue;
+      const unexplained = tr(f[k].v) - tr(early[k][code].v) - (tr(interp(curves[k].knots, x1)) - tr(interp(curves[k].knots, x0)));
+      pts.push([x0, unexplained / years]);
+    }
+    pts.sort((p, q) => p[0] - q[0]);
+    const med = (xs) => { const t = xs.slice().sort((p, q) => p - q); const m = t.length >> 1; return t.length % 2 ? t[m] : (t[m - 1] + t[m]) / 2; };
+    const terc = [0, 1, 2].map((i) => med(pts.slice(Math.floor((i * pts.length) / 3), Math.floor(((i + 1) * pts.length) / 3)).map((p) => p[1])));
+    const cut = [pts[Math.floor(pts.length / 3)][0], pts[Math.floor((2 * pts.length) / 3)][0]];
+    curves[k].drift = curves[k].knots.map(([x]) => +terc[x < cut[0] ? 0 : x < cut[1] ? 1 : 2].toFixed(5));
+    curves[k].driftLog = log;
+    curves[k].driftFrom = `within-country change ${EARLY}-${REF_YEAR} not explained by income growth; median by income tercile (n=${pts.length})`;
+  }
 
   const coverage = {};
   for (const field of Object.keys(allFields)) {
@@ -374,10 +438,10 @@ async function main() {
     countries: countries.map(({ members, ...c }) => c),
     regions: regions.map(({ idx, nePop, nePopYear, neGdpMd, neGdpYear, ...r }) => r),
   };
-  fs.writeFileSync(path.join(OUT, 'baseline.json'), JSON.stringify(baseline));
-  fs.writeFileSync(path.join(OUT, 'world.topo.json'), JSON.stringify(quantize(topo, 1e5)));
+  fs.writeFileSync(path.join(OUT, OUT_NAME), JSON.stringify(baseline));
+  if (OUT_NAME === 'baseline.json') fs.writeFileSync(path.join(OUT, 'world.topo.json'), JSON.stringify(quantize(topo, 1e5)));
   console.log(`countries=${countries.length} regions=${regions.length}`);
-  console.log('curves', JSON.stringify(curves));
+  for (const [k, cv] of Object.entries(curves)) if (cv.drift) console.log('drift', k, cv.drift.join(' '));
   for (const [k, v] of Object.entries(coverage)) console.log(k.padEnd(20), JSON.stringify(v));
 }
 
