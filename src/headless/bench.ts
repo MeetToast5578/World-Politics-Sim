@@ -12,6 +12,7 @@ import { chronicleQuarterly, chronicleYearly } from '../engine/systems/chronicle
 import { politicsQuarterly } from '../engine/systems/politics';
 import { religionYearly } from '../engine/systems/religion';
 import { diplomacyYearly } from '../engine/systems/diplomacy';
+import { conflictMonthly, conflictYearly } from '../engine/systems/conflict';
 import type { Baseline } from '../engine/types';
 
 const b = loadBaseline();
@@ -49,9 +50,10 @@ const eq = time(() => { for (let i = 0; i < 4 * N; i++) economyQuarterly(s2.st, 
 const po = time(() => { for (let i = 0; i < 4 * N; i++) politicsQuarterly(s2.st, s2.params, rng, s2.trade); }) / N;
 const re = time(() => { for (let i = 0; i < N; i++) religionYearly(s2.st, b, s2.params); }) / N;
 const di = time(() => { for (let i = 0; i < N; i++) diplomacyYearly(s2.st, b, s2.params, rng, s2.trade, s2.pairs); }) / N;
+const co = time(() => { for (let i = 0; i < N; i++) { for (let m = 0; m < 12; m++) conflictMonthly(s2.st, s2.params, rng, s2.cnet, s2.pairs); conflictYearly(s2.st, s2.params, rng, s2.cnet, s2.pairs); } }) / N;
 const cq = time(() => { for (let i = 0; i < 4 * N; i++) chronicleQuarterly(s2.st); }) / N;
 const cy = time(() => { for (let i = 0; i < N; i++) chronicleYearly(s2.st); }) / N;
-console.log(`\nper simulated year:  demography ${dy.toFixed(3)} ms | economy ${eq.toFixed(3)} ms | politics ${po.toFixed(3)} ms | religion ${re.toFixed(3)} ms | diplomacy ${di.toFixed(3)} ms | chronicle ${(cq + cy).toFixed(3)} ms`);
+console.log(`\nper simulated year:  demography ${dy.toFixed(3)} ms | economy ${eq.toFixed(3)} ms | politics ${po.toFixed(3)} ms | religion ${re.toFixed(3)} ms | diplomacy ${di.toFixed(3)} ms | conflict ${co.toFixed(3)} ms | chronicle ${(cq + cy).toFixed(3)} ms`);
 
 // 4. scaling: replicate the country set k times (synthetic, for cost only)
 console.log('\nscaling (synthetic copies of the baseline):');

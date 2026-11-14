@@ -1,6 +1,6 @@
 import { createRoot } from 'react-dom/client';
-import '@fontsource/atkinson-hyperlegible-next/400.css';
-import '@fontsource/atkinson-hyperlegible-next/700.css';
+import '@fontsource/lexend/400.css';
+import '@fontsource/lexend/700.css';
 import { App } from './App';
 import './styles.css';
 

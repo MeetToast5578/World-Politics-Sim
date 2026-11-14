@@ -17,6 +17,8 @@ runs offline. Raw downloads are cached in `.cache/` (not committed). The baselin
 | WD | Wikidata SPARQL (P122 form of government, P31 instance of, P1906/P1313 offices) | government form | CC0 |
 | DERIVED | computed from NE geometry | area (spherical), coastline (topology arcs not shared with another region), neighbours | Public domain |
 | IMPUTED | median of countries in the same World Bank region | fields missing after fallbacks | model assumption |
+| UCDP | UCDP/PRIO Armed Conflict Dataset v26.1 and UCDP Battle-Related Deaths Dataset v26.1 (conflict level) | armed conflicts under way at the reference year (sides, start, goal, battle deaths), onset, duration and battle-death rates 1990-2023, last year of internal conflict per country, interstate conflict history (grievance) | CC BY 4.0 |
+| SIPRI | SIPRI Yearbook 2023, World nuclear forces | list of the nine nuclear-armed states | facts cited |
 
 ## Field coverage (200 entities)
 

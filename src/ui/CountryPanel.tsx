@@ -7,6 +7,8 @@ import { formatDate } from '../engine/calendar';
 import { LineChart } from './LineChart';
 import { Pyramid } from './Pyramid';
 import { NewsList } from './NewsList';
+import { WarList } from './WarList';
+import type { WarInfo } from '../worker/protocol';
 import { fmtNum, fmtPct, fmtUsd } from './format';
 import { GOV_LABELS } from './mapModes';
 import { REGIME_WORDS, REGIME_EXPLAIN, incomeWord, unrestWord, approvalWord, relationWord, relationReasons, riskWord, trend } from './words';
@@ -18,6 +20,8 @@ interface Props {
   name: (c: number) => string;
   weight: (c: number) => number;
   coupRisk: number;
+  wars: WarInfo[];
+  startDay: number;
   onSelect: (c: number) => void;
   onClose: () => void;
 }
@@ -41,16 +45,19 @@ function Src({ o, b }: { o?: Obs; b: Baseline }) {
   return <span className={`src ${o.s === 'IMPUTED' ? 'imputed' : ''}`} title={`${s?.name ?? o.s} (${s?.license ?? ''})`}>{o.s === 'IMPUTED' ? 'estimated' : o.s} {o.y}</span>;
 }
 
-export function CountryPanel({ baseline: b, detail, events, name, weight, coupRisk, onSelect, onClose }: Props) {
+export function CountryPanel({ baseline: b, detail, events, name, weight, coupRisk, wars: allWars, startDay, onSelect, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('Overview');
   const bc = b.countries[detail.c], f = detail.fields, bf = bc.fields, h = detail.history.series, years = detail.history.years;
   const P = f.p0 + f.p1 + f.p2, gdpPc = f.gdp / P;
   const growth = h.gdp.length >= 2 ? h.gdp[h.gdp.length - 1] / h.gdp[h.gdp.length - 2] - 1 : NaN;
   const [unrest, unrestTone] = unrestWord(f.unrest), [appr, apprTone] = approvalWord(f.approval);
+  const wars = allWars.filter((w) => w.loc === detail.c || w.a.includes(detail.c) || w.b.includes(detail.c));
   const treaties = [...detail.diplomacy.treaties].sort((x, y) => y.members - x.members);
   const summary = `${a(incomeWord(gdpPc))} ${incomeWord(gdpPc)} ${REGIME_WORDS[f.regime].toLowerCase()} of ${fmtNum(P)} people.`
     + ` ${treaties.length ? `Member of ${treaties.length > 2 ? `${treaties.slice(0, 2).map((t) => t.label).join(', ')} and ${treaties.length - 2} other alliance${treaties.length > 3 ? 's' : ''}` : treaties.map((t) => t.label).join(' and ')}.` : 'Not in any military alliance.'}`
-    + `${f.sanctionLoad > 0.05 || f.unSanction > 0 ? ' Under international sanctions.' : ''}`;
+    + `${f.sanctionLoad > 0.05 || f.unSanction > 0 ? ' Under international sanctions.' : ''}`
+    + wars.map((w) => (w.kind === 'civil' ? (w.loc === detail.c ? ` ${w.rate >= 1000 ? 'Torn by civil war' : 'Fighting an armed rebellion'}.` : ` Has troops in ${name(w.loc)}.`)
+      : ` At war with ${(w.a.includes(detail.c) ? w.b : w.a).map(name).join(' and ')}.`)).join('');
 
   return (
     <div className="panel country">
@@ -68,6 +75,7 @@ export function CountryPanel({ baseline: b, detail, events, name, weight, coupRi
 
       {tab === 'Overview' && (
         <div role="tabpanel">
+          {wars.length > 0 && <div className="callout war"><WarList wars={wars} name={name} onSelect={onSelect} startDay={startDay} /></div>}
           <div className="stats">
             <Stat label="People" value={fmtNum(P)} arrow={trend(h.pop)} />
             <Stat label="Income per person" value={fmtUsd(gdpPc)} arrow={trend(h.gdpPc)} note={incomeWord(gdpPc)} />

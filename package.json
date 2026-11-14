@@ -12,10 +12,11 @@
     "data": "node scripts/build-data.mjs",
     "headless": "tsx src/headless/run.ts",
     "bench": "tsx src/headless/bench.ts",
-    "backtest": "tsx src/headless/backtest.ts"
+    "backtest": "tsx src/headless/backtest.ts",
+    "conflicts": "tsx src/headless/conflictProbe.ts"
   },
   "dependencies": {
-    "@fontsource/atkinson-hyperlegible-next": "^5.2.7",
+    "@fontsource/lexend": "^5.2.11",
     "d3-geo": "^3.1.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

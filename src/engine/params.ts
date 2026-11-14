@@ -162,5 +162,57 @@ export const DEFAULT_PARAMS = {
   // --- military ---
   /** Annual depreciation of the military capital stock (equipment, training). Assumption. */
   milDepreciation: 0.08,
+
+  // --- armed conflict (systems/conflict.ts) ---
+  // Onset rates and duration / deaths distributions are targets from UCDP (data build); weights are assumptions
+  // informed by the quantitative conflict literature cited per line.
+  conflict: {
+    /** Civil-conflict onset (country-year logit; Fearon & Laitin 2003, Hegre & Sambanis 2006 signs and rough sizes):
+     *  population (log), income (log), electoral autocracy ("anocracy"), unrest (instability), religious polarisation,
+     *  youth bulge (Urdal 2006), conflict trap (Collier et al. 2003), a neighbour at war (contagion); liberal
+     *  democracies are rarely the site of armed conflict (Hegre et al. 2001); microstates are excluded. */
+    civil: { max: 0.5, pop: 0.4, income: 0.9, anocracy: 0.6, liberal: 1.0, unrest: 3, polarisation: 0.8, youth: 4, memory: 1.5, neighbour: 0.5, minPop: 2e5 },
+    /** Interstate onset (pair-year logit; Bremer 1992 "dangerous dyads", Russett & Oneal 2001): contiguity,
+     *  joint democracy, grievance (rivalry), distrust, power parity, shared alliance, nuclear deterrence. Saturates at
+     *  max per pair-year: even enduring rivalries (India-Pakistan) fight a few times per half-century. */
+    interstate: { max: 0.08, contiguity: 2, jointDemocracy: 1.5, grievance: 1.2, distrust: 2, parity: 0.8, alliance: 1.2, nuclear: 2.5, unrest: 1,
+      /** Only the largest militaries project force: countries without a land border fight only if one of them
+       *  ranks among the top `projection` by military capital. */
+      projection: 15 },
+    /** Duration: termination hazard α/(τ + t) per year (Lomax) times (1 + decisive·score²); fitted to UCDP medians
+     *  and tails by the ensemble test. */
+    duration: { civilAlpha: 1.15, civilTau: 2.5, interAlpha: 2.1, interTau: 1.0, decisive: 1 },
+    /** Battle deaths per year: lognormal; persistent part drawn per war plus a monthly AR(1) deviation (stationary sd
+     *  ≈ 0.9). UCDP BRD 1990-2023, summed per country-year for internal conflicts: median 325, 90th percentile 3,034
+     *  (total ln-sd ≈ 1.74); interstate conflict-years: median 138, 90th percentile 7,927 (ln-sd ≈ 3.2). */
+    deaths: { civilMedian: 325, civilSd: 1.45, interMedian: 140, interSd: 3.0, lvlRho: 0.94, lvlSd: 0.3 },
+    /** Fighting: score drift from the balance of strength (κ per year) plus noise; home advantage of defenders;
+     *  strength = military capital × reach (1 / (1 + distance / reachKm)); governments' strength scales with legitimacy. */
+    fight: { kappa: 0.3, noise: 0.5, home: 1.5, reachKm: 2000, rebelBase: 0.6, maxOccupation: 0.5, occSpeed: 0.1 },
+    /** Military aid in interstate wars: a non-belligerent m helps side s when trust(m, s) − trust(m, enemy) > min,
+     *  with share × (difference − min) of its military capital (US aid to Ukraine ≈ 5% of US military spending in
+     *  2022-23; magnitude assumption). Aid is shipped, so distance does not reduce it. */
+    aid: { share: 0.03, min: 0.6 },
+    /** Consequences per unit warLoad (≈ 3 for Ukraine 2023, ≈ 0.1 for a minor insurgency): annual destruction of
+     *  capital and productivity (Collier 1999: civil war costs ≈ 2% growth/yr; Ukraine 2022 −29% GDP), refugees per
+     *  battle death (UNHCR: Ukraine, Syria order 20-40), civilians killed per battle death (assumption 0.3), unrest. */
+    damage: { capital: 0.05, tfp: 0.01, refugeesPerDeath: 30, civiliansPerDeath: 0.3, unrest: 0.3 },
+    /** Mobilisation: belligerents' military spending moves toward 4% of GDP plus up to 25% for the country fought
+     *  over (Ukraine 2023 ≈ 37%, Russia ≈ 6%), relaxing back to the pre-war level after (≈ 5 years). */
+    mobilise: { base: 0.04, home: 0.25, years: 1, demobYears: 5 },
+    /** Allies: a defence-treaty partner joins the defender with probability join·(1 + trust)/2 × reach, halved for
+     *  multilateral treaties. Leeds et al. (2000) find commitments honoured ≈ 75% of the time when formally invoked,
+     *  but invocations are rare: since 1990 almost no UCDP interstate conflict had states joining as belligerents. */
+    allies: { join: 0.2, attackerJoin: 0.05, multilateral: 0.3, grievance: 1.5 },
+    /** Outcome thresholds: a side wins outright when the score passes ±victory; otherwise a peace agreement with
+     *  probability peace (civil; Kreutz 2010: of civil conflict terminations ≈ 16% victories, ≈ 18% peace
+     *  agreements, ≈ 17% ceasefires, ≈ 46% low activity). */
+    outcome: { victory: 0.75, peace: 0.35 },
+    /** Conflict-trap memory decays over ~10 years; rally-round-the-flag approval at the start of an interstate war. */
+    memoryYears: 10, rally: 0.08,
+    /** Nuclear use: only by a nuclear state whose own territory is substantially occupied or whose government is
+     *  being overthrown by a foreign army; per month. Never observed since 1945, so tiny (assumption). */
+    nuclear: { useMonthly: 0.005, occupied: 0.25, killShare: 0.02, capital: 0.25, tfp: 0.05, oilShock: 0.5, retaliate: 0.8 },
+  },
 };
 export type Params = typeof DEFAULT_PARAMS;

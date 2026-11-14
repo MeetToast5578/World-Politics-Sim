@@ -12,14 +12,16 @@ inflation, sector shares, public debt with fiscal reaction and sovereign default
 31 denominations and sects (World Religion Project) with secularisation and religious polarisation; domestic politics
 (V-Dem democracy and regime types, approval, legitimacy, unrest, elections, coups, uprisings, democratisation and
 autocratisation, calibrated to observed base rates); diplomacy (trust, grievance and threat between countries,
-ATOP defence treaties, sanctions, crises, trade shaped by politics); an event
+ATOP defence treaties, sanctions, crises, trade shaped by politics); armed conflict (the 33 conflicts UCDP recorded at
+the end of 2023, new civil and interstate wars at UCDP's historical rates, casualties, refugees, war damage, allies,
+military aid, nuclear deterrence, peace deals, ceasefires and annexations); an event
 chronicle that records the causes of each event; pause/play/speed/step, save/load, rewind and branching timelines.
 The interface is written for people, not modellers: plain-language news with a "why" for every event, seven main maps
 plus 21 more, a history bar to go back to any year, and a country view in tabs (overview, people, economy, politics,
 relations, and a data tab with every source and the raw model state).
 `docs/BACKTEST.md` reports how well the model reproduces 2000→2023 from 2000 data.
 
-**What does not exist yet:** wars and territorial change (Phase 4), explicit political actors and parties,
+**What does not exist yet:** province-level front lines and new states from secession (Phase 4b), explicit political actors and parties,
 international organisations beyond defence treaties, technology, environment, ideology. Constitutional form and WGI governance scores are static baseline data. See
 [docs/DESIGN.md](docs/DESIGN.md) for the architecture, the models of every subsystem (implemented and planned), the
 roadmap and the main uncertainties.
@@ -77,4 +79,5 @@ docs/                    design document and data sources
 
 Data: Natural Earth (public domain), World Bank (CC BY 4.0), IMF DataMapper (attribution), Wikidata (CC0),
 V-Dem via Our World in Data (CC BY-SA 4.0), World Religion Project, MIDs and COW codes via Correlates of War and ATOP
-(research use with citation), UN voting ideal points (CC0), UCDP/PRIO armed conflicts (CC BY 4.0).
+(research use with citation), UN voting ideal points (CC0), UCDP/PRIO armed conflicts and UCDP battle-related deaths
+(CC BY 4.0), the SIPRI Yearbook's list of nuclear-armed states.

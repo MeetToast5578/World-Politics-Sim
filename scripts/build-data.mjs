@@ -43,7 +43,8 @@ const SOURCES = {
   ATOP: { name: 'Alliance Treaty Obligations and Provisions (ATOP) 5.1, Leeds et al.', url: 'http://www.atopdata.org/', license: 'Free for research use with citation (ATOP terms)' },
   UNGA: { name: 'UN General Assembly ideal points (Bailey, Strezhnev & Voeten), Harvard Dataverse doi:10.7910/DVN/LEJUQZ', url: 'https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LEJUQZ', license: 'CC0' },
   MID: { name: 'Correlates of War Dyadic Militarized Interstate Disputes 4.03 (to 2014)', url: 'https://correlatesofwar.org/data-sets/mids/', license: 'Free for research use with citation (COW terms)' },
-  UCDP: { name: 'UCDP/PRIO Armed Conflict Dataset v26.1', url: 'https://ucdp.uu.se/downloads/', license: 'CC BY 4.0' },
+  UCDP: { name: 'UCDP/PRIO Armed Conflict Dataset v26.1 and UCDP Battle-Related Deaths Dataset v26.1', url: 'https://ucdp.uu.se/downloads/', license: 'CC BY 4.0' },
+  SIPRI: { name: 'SIPRI Yearbook 2023: World nuclear forces', url: 'https://www.sipri.org/yearbook/2023/07', license: 'Facts cited (list of nuclear-armed states)' },
   CURATED: { name: 'Curated from official sanctions lists (OFAC programmes, EU Sanctions Map, UK sanctions list, UN SC committees)', url: 'https://sanctionsmap.eu/', license: 'Facts compiled for this project' },
 };
 
@@ -278,18 +279,19 @@ async function alliances(countries) {
 const MID_WEIGHT = { 2: 0.05, 3: 0.1, 4: 0.3, 5: 1.0 };   // threat, display, use of force, war (assumption)
 const UCDP_WEIGHT = { 1: 0.5, 2: 1.5 };                    // minor (25-999 deaths/yr), war (1000+) (assumption)
 const GW_FIX = { 678: 'YEM', 260: 'DEU', 340: 'SRB' };     // Gleditsch-Ward codes that differ from COW numbers
+const unz = async (name, url, entry) => {
+  const zip = path.join(CACHE, name);
+  if (!fs.existsSync(zip)) { const r = await fetch(url, { signal: AbortSignal.timeout(120000) }); if (!r.ok) throw new Error(`${r.status} ${url}`); fs.writeFileSync(zip, Buffer.from(await r.arrayBuffer())); }
+  return execFileSync('unzip', ['-p', zip, entry], { maxBuffer: 1 << 28 }).toString();
+};
+const csvRows = (txt) => {
+  const lines = txt.trim().split(/\r?\n/), split = (l) => [...l.matchAll(/("([^"]*)"|[^,]*)(,|$)/g)].map((m) => m[2] ?? m[1]).slice(0, -1);
+  const h = split(lines[0]);
+  return lines.slice(1).map((l) => Object.fromEntries(split(l).map((v, i) => [h[i], v])));
+};
+const ucdpAcd = async () => csvRows(await unz('ucdp_acd_261.zip', 'https://ucdp.uu.se/downloads/ucdpprio/ucdp-prio-acd-261-csv.zip', 'UcdpPrioConflict_v26_1.csv'));
 async function conflictHistory(countries) {
   const cw = await cowCrosswalk(countries);
-  const unz = async (name, url, entry) => {
-    const zip = path.join(CACHE, name);
-    if (!fs.existsSync(zip)) { const r = await fetch(url, { signal: AbortSignal.timeout(120000) }); if (!r.ok) throw new Error(`${r.status} ${url}`); fs.writeFileSync(zip, Buffer.from(await r.arrayBuffer())); }
-    return execFileSync('unzip', ['-p', zip, entry], { maxBuffer: 1 << 28 }).toString();
-  };
-  const csvRows = (txt) => {
-    const lines = txt.trim().split(/\r?\n/), split = (l) => [...l.matchAll(/("([^"]*)"|[^,]*)(,|$)/g)].map((m) => m[2] ?? m[1]).slice(0, -1);
-    const h = split(lines[0]);
-    return lines.slice(1).map((l) => Object.fromEntries(split(l).map((v, i) => [h[i], v])));
-  };
   const g = new Map(), add = (a, b, w, y) => {
     if (!a || !b || a === b || y > REF_YEAR) return;
     const k = [a, b].sort().join('-');
@@ -297,13 +299,86 @@ async function conflictHistory(countries) {
   };
   const mids = csvRows(await unz('dyadic_mid403.zip', 'https://correlatesofwar.org/wp-content/uploads/dyadic_mid_4.03_update.zip', 'dyadic_mid_4.03_update/dyadic_mid_4.03.csv'));
   for (const r of mids) if (+r.year >= REF_YEAR - 45) add(cw.num(r.statea), cw.num(r.stateb), MID_WEIGHT[+r.hihost] ?? 0, +r.year);
-  const ucdp = csvRows(await unz('ucdp_acd_261.zip', 'https://ucdp.uu.se/downloads/ucdpprio/ucdp-prio-acd-261-csv.zip', 'UcdpPrioConflict_v26_1.csv'));
+  const ucdp = await ucdpAcd();
   const gw = (x) => GW_FIX[+x] ?? cw.num(x);
   for (const r of ucdp) {
     if (r.type_of_conflict !== '2' || +r.year <= 2014) continue;
     for (const a of r.gwno_a.split(',')) for (const b of r.gwno_b.split(',')) add(gw(a.trim()), gw(b.trim()), UCDP_WEIGHT[+r.intensity_level] ?? 0, +r.year);
   }
   return [...g.entries()].filter(([, v]) => v >= 0.05).map(([k, v]) => { const [a, b] = k.split('-'); return { a, b, g: +v.toFixed(3) }; });
+}
+
+// --- UCDP armed conflicts: conflicts under way at the reference year, base rates, battle deaths ----------------
+// Nuclear-armed states (SIPRI Yearbook 2023; Israel's arsenal is undeclared but documented there).
+const NUCLEAR = ['USA', 'RUS', 'CHN', 'FRA', 'GBR', 'IND', 'PAK', 'ISR', 'PRK'];
+async function conflicts(countries) {
+  const cw = await cowCrosswalk(countries), gw = (x) => GW_FIX[+x] ?? cw.num(x);
+  const ids = (list) => [...new Set(list.split(',').map((x) => x.trim()).filter(Boolean).map(gw).filter(Boolean))];
+  const acd = await ucdpAcd();
+  const brd = csvRows(await unz('ucdp_brd_261.zip', 'https://ucdp.uu.se/downloads/brd/ucdp-brd-conf-261-csv.zip', 'BattleDeaths_v26_1_conf.csv'));
+  const deaths = new Map(brd.map((r) => [`${r.conflict_id}|${r.year}`, +r.bd_best]));
+  const W1 = REF_YEAR, W0 = REF_YEAR - 33, D0 = Math.max(1989, W0); // battle deaths are recorded from 1989
+  const q = (a, ps) => { a = a.slice().sort((x, y) => x - y); return Object.fromEntries(ps.map((p) => [`q${Math.round(p * 100)}`, +(a[Math.floor(p * (a.length - 1))] ?? NaN).toFixed(2)])); };
+  // interstate: episodes (conflict id + episode start), durations from episode start to end date
+  const eps = new Map();
+  for (const r of acd) {
+    if (+r.year > W1) continue;
+    const k = `${r.conflict_id}|${r.start_date2}`, e = eps.get(k) ?? { r, years: [], end: null };
+    e.years.push(+r.year); if (r.ep_end === '1') e.end = r.ep_end_date; eps.set(k, e);
+  }
+  const inter = [...eps.values()].filter((e) => e.r.type_of_conflict === '2' && +e.r.start_date2.slice(0, 4) >= W0);
+  const interDur = inter.filter((e) => e.end).map((e) => (Date.parse(e.end) - Date.parse(e.r.start_date2)) / 864e5 / 365.25);
+  // internal conflicts at country level: a spell is a run of consecutive calendar years with any internal conflict
+  const byLoc = new Map();
+  for (const r of acd) {
+    if (!['3', '4'].includes(r.type_of_conflict) || +r.year > W1) continue;
+    for (const g of ids(r.gwno_loc)) { const m = byLoc.get(g) ?? new Map(); m.set(+r.year, [...(m.get(+r.year) ?? []), r]); byLoc.set(g, m); }
+  }
+  const spells = [];
+  for (const [loc, m] of byLoc) {
+    const ys = [...m.keys()].sort((a, b) => a - b);
+    let start = ys[0];
+    for (let i = 0; i < ys.length; i++) if (i === ys.length - 1 || ys[i + 1] > ys[i] + 1) { spells.push({ loc, start, last: ys[i] }); start = ys[i + 1]; }
+  }
+  const civOn = spells.filter((s) => s.start >= W0);
+  const civLen = civOn.filter((s) => s.last < W1).map((s) => s.last - s.start + 1);
+  const bdYears = (types) => brd.filter((r) => types.includes(r.type_of_conflict) && +r.year >= D0 && +r.year <= W1).map((r) => +r.bd_best);
+  // the model has one civil conflict per country: battle deaths summed over a country's internal conflicts per year
+  const bdCountry = (() => {
+    const m = new Map();
+    for (const r of brd) if (['3', '4'].includes(r.type_of_conflict) && +r.year >= D0 && +r.year <= W1) for (const g of ids(r.gwno_loc)) m.set(`${g}|${r.year}`, (m.get(`${g}|${r.year}`) ?? 0) + +r.bd_best);
+    return [...m.values()];
+  })();
+  // last year of internal conflict per country (conflict-trap memory at the start)
+  const lastCivil = {};
+  for (const sp of spells) if (sp.last < W1) lastCivil[sp.loc] = Math.max(lastCivil[sp.loc] ?? 0, sp.last);
+  // under way at the reference year (active that year and the episode not ended within it)
+  const active = [];
+  for (const e of eps.values()) {
+    const r = acd.find((x) => x.conflict_id === e.r.conflict_id && x.start_date2 === e.r.start_date2 && +x.year === W1);
+    if (!r || e.r.type_of_conflict !== '2' || (r.ep_end === '1')) continue;
+    const a = ids(r.gwno_a), b = ids(r.gwno_b);
+    if (a.length && b.length) active.push({ kind: 'interstate', a, b, loc: b[0], start: e.r.start_date2, goal: r.incompatibility === '2' ? 'government' : 'territory', deaths: deaths.get(`${r.conflict_id}|${W1}`) ?? 25, name: r.territory_name || null, intensity: +r.intensity_level });
+  }
+  for (const s of spells.filter((x) => x.last === W1)) {
+    const rows = byLoc.get(s.loc).get(W1).filter((r) => !(r.ep_end === '1' && !byLoc.get(s.loc).has(W1 + 1)));
+    if (!rows.length) continue;
+    const d = rows.map((r) => deaths.get(`${r.conflict_id}|${W1}`) ?? 25), main = rows[d.indexOf(Math.max(...d))];
+    const small = (list) => { const x = ids(list); return x.length <= 4 ? x : []; }; // large coalitions (e.g. against IS) are not modelled as belligerents
+    active.push({
+      kind: 'civil', a: [s.loc, ...new Set(rows.flatMap((r) => small(r.gwno_a_2nd)))].filter((v, i, arr) => arr.indexOf(v) === i), b: [...new Set(rows.flatMap((r) => small(r.gwno_b_2nd)))].filter((x) => x !== s.loc),
+      loc: s.loc, start: `${s.start}-01-01`, goal: rows.some((r) => r.incompatibility !== '1') ? 'government' : 'territory',
+      deaths: d.reduce((x, y) => x + y, 0), name: (() => { const g = main.side_b.split(',').map((x) => x.trim()); return g.length > 3 ? `${g.slice(0, 2).join(', ')} and others` : g.join(', '); })(), intensity: Math.max(...rows.map((r) => +r.intensity_level)),
+    });
+  }
+  return {
+    window: `${W0}-${W1}`, deathsWindow: `${D0}-${W1}`, nuclear: NUCLEAR.filter((x) => countries.some((c) => c.id === x)),
+    interstate: { onsetsPerYear: +(inter.length / (W1 - W0 + 1)).toFixed(3), durationYears: q(interDur, [0.25, 0.5, 0.75, 0.9]), deaths: q(bdYears(['2']), [0.5, 0.75, 0.9, 0.99]) },
+    civil: { onsetsPerYear: +(civOn.length / (W1 - W0 + 1)).toFixed(3), spellYears: q(civLen, [0.25, 0.5, 0.75, 0.9]), deaths: q(bdYears(['3', '4']), [0.5, 0.75, 0.9, 0.99]), countryDeaths: q(bdCountry, [0.5, 0.75, 0.9, 0.99]), lastYear: lastCivil,
+      activeCountries: +(Array.from({ length: W1 - W0 + 1 }, (_, i) => [...byLoc.values()].filter((m) => m.has(W0 + i)).length).reduce((x, y) => x + y, 0) / (W1 - W0 + 1)).toFixed(1) },
+    battleDeathsPerYear: Math.round(brd.filter((r) => +r.year >= D0 && +r.year <= W1).reduce((x, r) => x + +r.bd_best, 0) / (W1 - D0 + 1)),
+    active,
+  };
 }
 
 // --- UN General Assembly ideal points (foreign-policy position) ----------------------------
@@ -711,6 +786,8 @@ async function main() {
   // UN voting position (used to move a country's foreign-policy position when its regime changes).
   const al = await alliances(countries);
   const grievances = await conflictHistory(countries);
+  const conflict = await conflicts(countries);
+  console.log('conflict', JSON.stringify({ ...conflict, active: conflict.active.length }), conflict.active.map((x) => `${x.kind[0]}:${x.loc}${x.kind === 'interstate' ? '<' + x.a : ''}:${x.deaths}`).join(' '));
   console.log('grievances', grievances.length, 'pairs; top', grievances.sort((x, y) => y.g - x.g).slice(0, 8).map((x) => `${x.a}-${x.b} ${x.g}`).join(', '));
   const ids = new Set(countries.map((c) => c.id));
   const sanctionYear = REF_YEAR >= 2022 ? 2023 : 2000;
@@ -746,6 +823,7 @@ async function main() {
       indicators: Object.fromEntries(Object.entries(allFields).map(([k, [s, code, agg]]) => [k, { source: s, code, agg }])),
       curves, coverage, baseRates: { ...vd.baseRates, alliances: al.rates }, secularisation,
       diplomacy: { treaties: al.treaties, atopYear: al.atopYear, allianceUpdates: al.notes, sanctions, sanctionsAsOf: sanctionYear, foreignPolicy, grievances },
+      conflict,
       religions: RELIGIONS.map(([, label, family]) => ({ label, family })),
     },
     countries: countries.map(({ members, ...c }) => c),

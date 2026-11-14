@@ -99,7 +99,8 @@ curves from the 2000 cross-section) and runs ${seeds} seeds from 2001-01-01 to 2
 2023 observations. Ensemble wall time: ${(ms / 1000).toFixed(1)} s. Simulated coup attempts: ${coupsPerYear.toFixed(1)} per
 year worldwide (calibration target ${b0.countries.length ? '3' : ''}, Powell & Thyne order of magnitude).
 
-What the model does **not** know: the 2008 financial crisis, COVID-19, wars, sanctions, commodity booms, policy
+What the model does **not** know: the 2008 financial crisis, COVID-19, which wars would break out (it starts from the
+armed conflicts under way in 2000 and simulates new ones at historical rates), sanctions, commodity booms, policy
 changes, and any data after 2000. Borders are today's (South Sudan, Kosovo etc. are simulated from their World Bank
 back-cast data for 2000). Errors are reported against two naive forecasts that use only 2000 information:
 population at constant 2000 natural increase and migration; real GDP at the *actual* world-average growth (hindsight,
@@ -129,7 +130,8 @@ for (const m of ['pop', 'gdpGrowth', 'tfr', 'lifeExp', 'demo'] as Metric[]) {
 md += `\n¹ naive GDP = every country grows at the actual world-average rate (×${worldGrowth.toFixed(2)} over 23 years).\n`;
 md += `\nErrors for population and GDP are log errors (0.10 ≈ 10%). "Bias" > 0 means the model overshoots. A
 well-calibrated ensemble would put ~80% of actual outcomes inside its 10-90% band; a much lower share means the model is
-over-confident (too little spread), which is expected here because the model has no wars, crises or policy shocks.
+over-confident (too little spread): its random shocks are far smaller than real history's crises, pandemics and policy
+changes, and simulated wars rarely hit the same countries as real ones.
 
 ## Detail
 ${regional.join('\n')}

@@ -12,22 +12,32 @@ interface Props {
   events: SimEvent[];
   branches: { day: number }[];
   busy: boolean;
+  /** population of a country: only dramatic news from countries of 20 million or more makes a mark */
+  weight: (c: number) => number;
   onRewind: (day: number) => void;
 }
 
-export function Timeline({ startDay, day, events, branches, busy, onRewind }: Props) {
+export function Timeline({ startDay, day, events, branches, busy, weight, onRewind }: Props) {
   const y0 = civilFromDays(startDay).y, now = civilFromDays(day);
   const span = Math.max(day - startDay, 3652); // the bar shows at least ten years so early marks are not crushed
   const pos = (d: number) => ((d - startDay) / span) * 100;
   const [hoverYear, setHoverYear] = useState<number | null>(null);
 
-  // one mark per year with world-changing news (coups, revolutions, defaults, wars...), taller when there was more
+  // the most eventful years: world-changing news weighted by the size of the countries involved; only the top 15%
+  // of years get a mark, so the bar shows where history turned rather than a mark every year
   const marks = useMemo(() => {
     const byYear = new Map<number, number>();
-    for (const e of events) if ((IMPORTANCE[e.k] ?? 1) >= 3) { const yr = civilFromDays(e.d).y; byYear.set(yr, (byYear.get(yr) ?? 0) + 1); }
-    const max = Math.max(1, ...byYear.values());
-    return [...byYear].map(([yr, n]) => ({ yr, h: 0.25 + 0.75 * Math.sqrt(n / max) }));
-  }, [events]);
+    for (const e of events) {
+      if ((IMPORTANCE[e.k] ?? 1) < 3) continue;
+      const size = Math.max(e.c >= 0 ? weight(e.c) : 1e9, e.o !== undefined && e.o >= 0 ? weight(e.o) : 0);
+      if (size < 2e7) continue;
+      const yr = civilFromDays(e.d).y;
+      byYear.set(yr, (byYear.get(yr) ?? 0) + Math.log10(size / 1e6));
+    }
+    const scores = [...byYear.values()].sort((a, b) => a - b), max = scores[scores.length - 1] ?? 1;
+    const cut = scores.length > 6 ? scores[Math.floor(scores.length * 0.85)] : 0;
+    return [...byYear].filter(([, v]) => v >= cut).map(([yr, v]) => ({ yr, h: 0.35 + 0.65 * (v / max) }));
+  }, [events, weight]);
 
   const yearAt = (e: MouseEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -76,7 +86,7 @@ export function Timeline({ startDay, day, events, branches, busy, onRewind }: Pr
           {ticks.map((t) => <span key={t} style={{ left: `${pos(daysFromCivil(t, 1, 1))}%` }}>{t}</span>)}
         </div>
       </div>
-      <p className="hint">{busy ? 'Going back in time…' : day > startDay ? 'Click the bar to go back to an earlier year. Marks show years with dramatic news.' : 'The simulation starts from real 2023 data.'}</p>
+      <p className="hint">{busy ? 'Going back in time…' : day > startDay ? 'Click the bar to go back to an earlier year. Marks show years with dramatic news from large countries.' : 'The simulation starts from real 2023 data.'}</p>
     </footer>
   );
 }

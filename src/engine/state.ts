@@ -14,7 +14,9 @@ export const FIELDS = [
   // public finance
   'debt', 'revShare', 'primSpendShare', 'pb0', 'debtRatio0',
   // military
-  'milexShare', 'milCap', 'afRate',
+  'milexShare', 'milCap', 'afRate', 'milex0',
+  // armed conflict: warLoad = log(1 + battle deaths per person-year on the territory / 1e-4); warMem: conflict-trap memory
+  'warLoad', 'warLoad0', 'warMem',
   // religion (indices of the composition in WorldState.religion)
   'relFrac', 'relPolar', 'secCeil',
   // politics
@@ -30,13 +32,32 @@ export type Field = (typeof FIELDS)[number];
 /** World-level variables (not per country). */
 // oilLn: log real oil price relative to baseline; oilDln: its last quarterly change;
 // coupBase and off*: hazard offsets solved at t0 so world event rates match observed base rates
-export const GLOBALS = ['oilLn', 'oilDln', 'coupBase', 'offCrisis', 'offSanction', 'offJoin', 'offLeave', 'offPact'] as const;
+// offCivil, offWar: armed-conflict onset offsets (same method); warSeq: id of the next war
+export const GLOBALS = ['oilLn', 'oilDln', 'coupBase', 'offCrisis', 'offSanction', 'offJoin', 'offLeave', 'offPact', 'offCivil', 'offWar', 'warSeq'] as const;
 
 /** Per-pair diplomatic state (pair list in systems/diplomacy.ts PairNet; i < j). sancIJ: sanctions by i on j. */
 export const PAIR_FIELDS = ['trust', 'trust0', 'grievance', 'sancIJ', 'sancJI'] as const;
 export type PairField = (typeof PAIR_FIELDS)[number];
 export interface Treaty { id: string; label: string | null; members: number[]; since: number }
 export type Global = (typeof GLOBALS)[number];
+
+/** An armed conflict. Civil: a[0] is the government (a[1..] states fighting for it), b the rebels' state backers.
+ *  Interstate: a attacks b; fighting is on loc's territory (the defender's). */
+export interface War {
+  id: number;
+  kind: 'interstate' | 'civil';
+  a: number[]; b: number[]; loc: number;
+  start: number;            // day
+  goal: 'government' | 'territory';
+  name: string | null;      // rebel group or disputed territory (UCDP) for conflicts under way at the start
+  sev: number;              // ln of the war's typical battle deaths per year (drawn at onset)
+  lvl: number;              // current deviation of ln deaths from sev (AR(1) month to month)
+  score: number;            // −1..1: > 0 side a (government / attacker) is winning
+  occ: number;              // interstate: share of loc's territory held by the attacker (0..maxOccupation)
+  deaths: number;           // cumulative battle deaths
+  rate: number;             // battle deaths per year, current
+  peak: number;             // highest yearly rate so far
+}
 
 /** Single years of age 0..99 plus the open group 100+. */
 export const AGES = 101;
@@ -70,6 +91,7 @@ export interface WorldState {
   religion: Float64Array;        // population shares by country × religion category
   pair: Record<PairField, Float64Array>; // diplomatic relations per pair (allocated once the pair list is built)
   treaties: Treaty[];            // defence treaties, members as country indices
+  wars: War[];                   // armed conflicts under way
   regionOwner: Int16Array;       // region index -> country index (-1 = none). Territorial change = editing this.
   rng: Record<string, Uint32Array>;
   branches: { day: number; seed: number }[]; // reseeds applied during the timeline (replay honours them)
@@ -85,8 +107,8 @@ export function createState(baseline: Baseline, seed: number, startDate?: string
   const idx = new Map(cs.map((c, i) => [c.id, i]));
   const startDay = parseDate(startDate ?? baseline.meta.startDate);
   const st: WorldState = {
-    version: 1, seed: seed >>> 0, startDay, day: startDay, n, ids: cs.map((c) => c.id), f, cohorts: new Float64Array(n * 2 * AGES), g: { oilLn: 0, oilDln: 0, coupBase: 0, offCrisis: 0, offSanction: 0, offJoin: 0, offLeave: 0, offPact: 0 },
-    pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, new Float64Array(0)])) as Record<PairField, Float64Array>, treaties: [],
+    version: 1, seed: seed >>> 0, startDay, day: startDay, n, ids: cs.map((c) => c.id), f, cohorts: new Float64Array(n * 2 * AGES), g: { oilLn: 0, oilDln: 0, coupBase: 0, offCrisis: 0, offSanction: 0, offJoin: 0, offLeave: 0, offPact: 0, offCivil: 0, offWar: 0, warSeq: 1 },
+    pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, new Float64Array(0)])) as Record<PairField, Float64Array>, treaties: [], wars: [],
     nRel: baseline.meta.religions.length, religion: new Float64Array(n * baseline.meta.religions.length),
     regionOwner: Int16Array.from(baseline.regions.map((r) => (r.owner == null ? -1 : idx.get(r.owner) ?? -1))),
     rng: {}, branches: [], events: [], history: { years: [], data: Object.fromEntries(HIST_FIELDS.map((k) => [k, []])) as any },
@@ -110,6 +132,7 @@ export function cloneState(st: WorldState): WorldState {
     religion: st.religion.slice(),
     pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, st.pair[k].slice()])) as Record<PairField, Float64Array>,
     treaties: st.treaties.map((t) => ({ ...t, members: t.members.slice() })),
+    wars: st.wars.map((w) => ({ ...w, a: w.a.slice(), b: w.b.slice() })),
     regionOwner: st.regionOwner.slice(),
     rng: Object.fromEntries(Object.entries(st.rng).map(([k, v]) => [k, v.slice()])),
     branches: st.branches.map((b) => ({ ...b })),
@@ -130,6 +153,7 @@ export function hashState(st: WorldState): string {
   mix(new Uint8Array(st.religion.buffer));
   for (const k of PAIR_FIELDS) mix(new Uint8Array(st.pair[k].buffer));
   mix(enc.encode(JSON.stringify(st.treaties)));
+  mix(enc.encode(JSON.stringify(st.wars)));
   mix(new Uint8Array(st.regionOwner.buffer));
   for (const k of Object.keys(st.rng).sort()) mix(new Uint8Array(st.rng[k].buffer));
   mix(enc.encode(JSON.stringify(st.events)));

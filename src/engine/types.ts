@@ -1,6 +1,6 @@
 // Shape of public/data/baseline.json (produced by scripts/build-data.mjs).
 
-export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED';
+export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI';
 
 /** A sourced observation: value, reference year, source. */
 export interface Obs { v: number; y: number; s: SourceId }
@@ -61,6 +61,16 @@ export interface Baseline {
       foreignPolicy: { slopeOnDemocracy: number; r2: number; n: number };
       /** Initial grievance per pair from conflict history (MIDs to 2014, UCDP interstate conflicts after). */
       grievances: { a: string; b: string; g: number }[];
+    };
+    /** UCDP armed conflicts: those under way at the reference year, and observed rates over the 34 years before it. */
+    conflict: {
+      window: string; deathsWindow: string; nuclear: string[]; battleDeathsPerYear: number;
+      interstate: { onsetsPerYear: number; durationYears: Record<string, number>; deaths: Record<string, number> };
+      civil: { onsetsPerYear: number; spellYears: Record<string, number>; deaths: Record<string, number>; countryDeaths: Record<string, number>; activeCountries: number;
+        /** last calendar year of internal conflict, for countries at peace at the reference year */
+        lastYear: Record<string, number> };
+      /** a: government / first side (with state supporters), b: other side (states; rebels' state backers in civil conflicts) */
+      active: { kind: 'interstate' | 'civil'; a: string[]; b: string[]; loc: string; start: string; goal: 'government' | 'territory'; deaths: number; name: string | null; intensity: number }[];
     };
     /** Logistic secularisation ds/dt = r·s·(1 − s/K) fitted on the World Religion Project panel. */
     secularisation: { r: number; K: number; n: number; window: string };

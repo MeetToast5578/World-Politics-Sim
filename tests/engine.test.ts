@@ -9,6 +9,7 @@ import { demographyYearly, solveSiler, lifeExpectancy, under5 } from '../src/eng
 import { economyQuarterly, interestRate } from '../src/engine/systems/economy';
 import { coupHazard } from '../src/engine/systems/politics';
 import { applyTradeEffects, pairOf } from '../src/engine/systems/diplomacy';
+import { transferTerritory } from '../src/engine/systems/conflict';
 
 const b = loadBaseline();
 const years = (sim: Simulation, n: number) => sim.advanceTo(addMonths(sim.st.day, 12 * n));
@@ -167,6 +168,61 @@ describe('diplomacy', () => {
     for (const t of s3.st.treaties) { expect(t.members.length).toBeGreaterThanOrEqual(2); expect(new Set(t.members).size).toBe(t.members.length); }
     for (const k of ['offCrisis', 'offSanction', 'offJoin', 'offLeave', 'offPact'] as const) expect(Number.isFinite(s3.st.g[k])).toBe(true);
   });
+});
+
+describe('armed conflict', () => {
+  const id = (c: number) => b.countries[c].id;
+  it('starts with the conflicts under way in 2023 (UCDP)', () => {
+    const sim = new Simulation(b, { seed: 1 });
+    const wars = sim.st.wars;
+    expect(wars.some((w) => w.kind === 'interstate' && id(w.a[0]) === 'RUS' && id(w.loc) === 'UKR')).toBe(true);
+    for (const c of ['SDN', 'MMR', 'SYR', 'ISR']) expect(wars.some((w) => w.kind === 'civil' && id(w.loc) === c)).toBe(true);
+    expect(wars.length).toBe(b.meta.conflict.active.length);
+  });
+  it('a change of territory moves people, capital and output without creating or losing any', () => {
+    const sim = new Simulation(b, { seed: 1 }), st = sim.st, f = st.f;
+    const ukr = st.ids.indexOf('UKR'), rus = st.ids.indexOf('RUS');
+    const P = worldPop(sim), K = f.K[ukr] + f.K[rus], Y = f.gdp[ukr] + f.gdp[rus], pu = totalPop(st, ukr);
+    const moved = transferTerritory(st, ukr, rus, 0.1);
+    expect(moved).toBeCloseTo(0.1 * pu, 0);
+    expect(worldPop(sim)).toBeCloseTo(P, 0);
+    expect(f.K[ukr] + f.K[rus]).toBeCloseTo(K, 0);
+    expect(f.gdp[ukr] + f.gdp[rus]).toBeCloseTo(Y, 0);
+    expect(f.p0[ukr] + f.p1[ukr] + f.p2[ukr]).toBeCloseTo(0.9 * pu, 0);
+  });
+  it('onset, duration and death rates over 4 worlds × 20 years are in the range UCDP observed 1990-2023', () => {
+    const C = b.meta.conflict;
+    let civ = 0, inter = 0, active = 0, deathRate = 0;
+    const spells: number[] = [];
+    for (let seed = 1; seed <= 4; seed++) {
+      const sim = new Simulation(b, { seed }), starts = new Map<number, number>();
+      for (let y = 0; y < 20; y++) {
+        const e0 = sim.st.events.length;
+        years(sim, 1);
+        for (const w of sim.st.wars) if (!starts.has(w.id) && w.start > sim.st.startDay) starts.set(w.id, w.start);
+        active += new Set(sim.st.wars.filter((w) => w.kind === 'civil').map((w) => w.loc)).size;
+        for (const w of sim.st.wars) deathRate += w.rate;
+        for (const e of sim.st.events.slice(e0)) {
+          if (e.k === 'civil_war_started') civ++;
+          if (e.k === 'war_started') inter++;
+          const s0 = e.x?.id !== undefined ? starts.get(e.x.id) : undefined;
+          if (s0 !== undefined && ['civil_war_won', 'rebels_won', 'autonomy_won', 'peace_deal', 'conflict_faded'].includes(e.k)) spells.push(civilFromDays(e.d).y - civilFromDays(s0).y + 1);
+        }
+        for (let c = 0; c < sim.st.n; c++) expect(Number.isFinite(totalPop(sim.st, c)) && totalPop(sim.st, c) > 0).toBe(true);
+      }
+    }
+    const N = 80;
+    spells.sort((x, y) => x - y);
+    expect(civ / N).toBeGreaterThan(0.6 * C.civil.onsetsPerYear);
+    expect(civ / N).toBeLessThan(1.5 * C.civil.onsetsPerYear);
+    expect(active / N).toBeGreaterThan(0.6 * C.civil.activeCountries);
+    expect(active / N).toBeLessThan(1.5 * C.civil.activeCountries);
+    expect(inter / N).toBeGreaterThan(0.3 * C.interstate.onsetsPerYear);
+    expect(inter / N).toBeLessThan(2.5 * C.interstate.onsetsPerYear);
+    expect(spells[spells.length >> 1]).toBeLessThanOrEqual(2 * C.civil.spellYears.q50);
+    expect(deathRate / N).toBeGreaterThan(0.3 * C.battleDeathsPerYear);
+    expect(deathRate / N).toBeLessThan(3 * C.battleDeathsPerYear);
+  }, 240000);
 });
 
 describe('invariants', () => {
