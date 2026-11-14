@@ -5,6 +5,8 @@ import { describeEvent } from '../engine/describe';
 import { formatDate } from '../engine/calendar';
 
 const KINDS: Record<string, string> = {
+  diplomatic_crisis: 'Crises', sanctions_imposed: 'Sanctions', sanctions_lifted: 'Sanctions', un_sanctions_lifted: 'Sanctions',
+  alliance_joined: 'Alliances', alliance_left: 'Alliances', alliance_formed: 'Alliances',
   coup: 'Coups', coup_failed: 'Coups', revolution: 'Uprisings', regime_overthrown: 'Uprisings', government_collapse: 'Uprisings',
   protests: 'Protests', democratization: 'Regime change', autocratization: 'Regime change', elections_restored: 'Regime change',
   election_lost: 'Elections', election_won: 'Elections',
@@ -23,7 +25,7 @@ export function EventFeed({ events, name, weight, onSelect }: Props) {
     for (let i = events.length - 1; i >= 0 && out.length < 150; i--) {
       const e = events[i];
       if (off.has(e.k)) continue;
-      if (e.c >= 0 && e.k !== 'gdp_rank_up' && weight(e.c) < minPop) continue;
+      if (e.c >= 0 && e.k !== 'gdp_rank_up' && Math.max(weight(e.c), e.o !== undefined && e.o >= 0 ? weight(e.o) : 0) < minPop) continue;
       out.push(e);
     }
     return out;

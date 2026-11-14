@@ -1,6 +1,6 @@
 // Shape of public/data/baseline.json (produced by scripts/build-data.mjs).
 
-export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB';
+export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED';
 
 /** A sourced observation: value, reference year, source. */
 export interface Obs { v: number; y: number; s: SourceId }
@@ -50,8 +50,18 @@ export interface Baseline {
     indicators: Record<string, { source: string; code: string; agg: string }>;
     curves: Record<'tfr' | 'lifeExpF' | 'lifeExpM' | 'u5mrF' | 'u5mrM' | 'agriShare' | 'industryShare' | 'investment', Curve>;
     coverage: Record<string, Record<string, number>>;
-    baseRates: { window: string; regimeChangePerCountryYear: number; democracyBoundaryPerCountryYear: number; indexRuleCrossingsPerCountryYear: number; demoAbsChangeMedian: number; demoAbsChangeP90: number };
+    baseRates: { alliances: { window: string; accessionsPerYear: number; exitsPerYear: number; newTreatiesPerYear: number };
+      window: string; regimeChangePerCountryYear: number; democracyBoundaryPerCountryYear: number; indexRuleCrossingsPerCountryYear: number; demoAbsChangeMedian: number; demoAbsChangeP90: number };
     religions: { label: string; family: string }[];
+    diplomacy: {
+      treaties: { id: string; label?: string | null; since: number; members: string[] }[];
+      atopYear: number; allianceUpdates: string[]; sanctionsAsOf: number;
+      /** sender 'UN' = UN Security Council regime (a country-level status in the model) */
+      sanctions: { sender: string; target: string; intensity: number; since: number; programme: string }[];
+      foreignPolicy: { slopeOnDemocracy: number; r2: number; n: number };
+      /** Initial grievance per pair from conflict history (MIDs to 2014, UCDP interstate conflicts after). */
+      grievances: { a: string; b: string; g: number }[];
+    };
     /** Logistic secularisation ds/dt = r·s·(1 − s/K) fitted on the World Religion Project panel. */
     secularisation: { r: number; K: number; n: number; window: string };
   };

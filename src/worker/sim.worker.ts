@@ -6,6 +6,8 @@ import { saveWorld, loadWorld } from '../engine/save';
 import { FIELDS, HIST_FIELDS, AGES, cohortIndex, totalPop } from '../engine/state';
 import { addMonths } from '../engine/calendar';
 import { coupHazard } from '../engine/systems/politics';
+import { pairOf, trustDrivers, treatyLabel, allyFlags } from '../engine/systems/diplomacy';
+import { worldGdp } from '../engine/systems/trade';
 import type { ToWorker, Frame, FromWorker } from './protocol';
 
 let baseline: Baseline;
@@ -21,11 +23,33 @@ const TICK_MS = 50;
 
 const post = (m: FromWorker) => (self as unknown as Worker).postMessage(m);
 
+/** Each country's largest multilateral defence treaty (index into blocs.labels, −1 = none). */
+function largestBlocs() {
+  const st = sim.st, multi = st.treaties.filter((t) => t.members.length >= 3).sort((a, b) => b.members.length - a.members.length || (a.id < b.id ? -1 : 1));
+  const of = new Array(st.n).fill(-1);
+  multi.forEach((t, k) => { for (const m of t.members) if (of[m] < 0) of[m] = k; });
+  return { of, labels: multi.map((t) => treatyLabel(t, (c) => sim.baseline.countries[c].name)) };
+}
+
+function diplomacyDetail(c: number) {
+  const st = sim.st, name = (k: number) => sim.baseline.countries[k].name, W = worldGdp(st.f.gdp), ally = allyFlags(st, sim.pairs);
+  const rel = sim.pairs.of[c].map((q) => {
+    const other = sim.pairs.i[q] === c ? sim.pairs.j[q] : sim.pairs.i[q];
+    const out = sim.pairs.i[q] === c ? st.pair.sancIJ[q] : st.pair.sancJI[q], inn = sim.pairs.i[q] === c ? st.pair.sancJI[q] : st.pair.sancIJ[q];
+    return { c: other, trust: st.pair.trust[q], grievance: st.pair.grievance[q], sanctionsBy: out, sanctionsOn: inn, drivers: trustDrivers(st, sim.params, sim.trade, sim.pairs, q, W, ally).parts };
+  });
+  return {
+    treaties: st.treaties.filter((t) => t.members.includes(c)).map((t) => ({ label: treatyLabel(t, name), members: t.members.length, since: t.since })),
+    relations: rel.sort((a, b) => b.trust - a.trust),
+  };
+}
+
 function metrics(): Record<string, number[]> {
   const st = sim.st, { f, n, history } = st;
   const out: Record<string, number[]> = { pop: [], gdp: [], gdpPc: [], growth: [], tfr: [], lifeExp: [], old: [], debt: [], mil: [], milexShare: [], effectiveness: [], voice: [], unemp: [], inflation: [], trade: [], agri: [], oilExp: [],
-    demo: [], regime: [], approval: [], unrest: [], coupRisk: [], relPolar: [], nonrel: [], majorRel: [] };
+    demo: [], regime: [], approval: [], unrest: [], coupRisk: [], relPolar: [], nonrel: [], majorRel: [], relSel: [], sanctionLoad: [], bloc: [] };
   const R = st.nRel;
+  const blocs = largestBlocs();
   const H = history.years.length, g = history.data.gdp;
   for (let c = 0; c < n; c++) {
     const P = totalPop(sim.st, c);
@@ -52,6 +76,10 @@ function metrics(): Record<string, number[]> {
     out.relPolar.push(f.relPolar[c]); out.nonrel.push(st.religion[c * R + R - 1]);
     let best = 0; for (let r = 1; r < R; r++) if (st.religion[c * R + r] > st.religion[c * R + best]) best = r;
     out.majorRel.push(best);
+    const q = selected !== null && selected !== c ? pairOf(sim.pairs, n, selected, c) : -1;
+    out.relSel.push(q >= 0 ? st.pair.trust[q] : NaN);
+    out.sanctionLoad.push(f.sanctionLoad[c]);
+    out.bloc.push(blocs.of[c]);
   }
   return out;
 }
@@ -70,6 +98,7 @@ function frame(): Frame {
   const fr: Frame = {
     type: 'frame', day: st.day, startDay: st.startDay, seed: st.seed, playing, branches: st.branches, metrics: m,
     world: { pop, gdp, old: old / pop, oil: Math.exp(st.g.oilLn), events: st.events.length, years: st.history.years, popSeries, gdpSeries },
+    blocLabels: largestBlocs().labels,
     newEvents, resetEvents, detail: null, perf: { msPerSimYear },
   };
   sentEvents = st.events.length;
@@ -80,7 +109,7 @@ function frame(): Frame {
     for (const k of HIST_FIELDS) series[k] = Array.from({ length: H }, (_, y) => st.history.data[k][y * st.n + c]);
     const cohort = (sex: number) => Array.from(st.cohorts.subarray(cohortIndex(c, sex), cohortIndex(c, sex) + AGES));
     fr.detail = { c, fields: Object.fromEntries(FIELDS.map((k) => [k, st.f[k][c]])), history: { years: st.history.years, series }, pyramid: { f: cohort(0), m: cohort(1) },
-      religion: Array.from(st.religion.subarray(c * st.nRel, (c + 1) * st.nRel)) };
+      religion: Array.from(st.religion.subarray(c * st.nRel, (c + 1) * st.nRel)), diplomacy: diplomacyDetail(c) };
   }
   return fr;
 }

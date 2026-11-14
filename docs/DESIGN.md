@@ -17,15 +17,15 @@ Sections marked **[implemented]** describe running code; **[design]** describes 
 | Backtest 2000→2023 with naive benchmarks, ensemble coverage, sensitivity analysis | implemented (`docs/BACKTEST.md`) |
 | Military capital stock (perpetual inventory of spending) | implemented (no conflict use yet) |
 | Chronicle/news events carrying their causal inputs | implemented |
-| Observer UI: map with 27 modes, time controls, country inspector with population pyramid, world panel, news feed | implemented |
+| Observer UI: map with 30 modes, time controls, country inspector with population pyramid, world panel, news feed | implemented |
 | Religion: 31 denominations/sects per country, secularisation, fractionalisation and polarisation | implemented (Phase 3, see §3.3) |
 | Domestic politics: democracy index and regime, approval, legitimacy, unrest, elections, coups, uprisings, regime change | implemented, aggregate level (Phase 3, see §3.4); political actors/factions still design |
-| Diplomacy, alliances, organizations, sanctions | design only (Phase 3) |
+| Diplomacy: relations (trust, grievance, threat), defence treaties, sanctions, crises, friend-shoring, "why" inspector | implemented (Phase 3b, see §3.5); international organisations other than defence treaties still design |
 | Conflict and warfare, territorial change | design only (Phase 4) — data structure for territorial change exists |
 | Technology, environment, culture/ideology | design only (Phase 5) |
 
-Regime, democracy, approval, legitimacy, unrest and religion now evolve in the simulation. Diplomacy and the military
-are not decided by the simulation yet. The constitutional form (Wikidata) and WGI governance scores remain static
+Regime, democracy, approval, legitimacy, unrest, religion, relations, alliances and sanctions now evolve in the
+simulation. Military decisions (war) are not simulated yet. The constitutional form (Wikidata) and WGI governance scores remain static
 baseline data, and the UI labels them as such. Governing-party orientation has no open data source and is drawn at the
 start; the UI marks it "drawn".
 
@@ -244,15 +244,43 @@ Central African Republic had 117 coups in 50 simulated years); coups now concent
 religious elites, opposition) with ideal points, veto players and bounded-rational policy choice; party systems;
 the "why did X do Y" inspector. The aggregate model above is the substrate they will replace.
 
-### 3.5 Diplomacy [design, Phase 3b]
+### 3.5 Diplomacy [implemented, Phase 3b]
 
-* Multi-dimensional dyadic relations (trade dependence, threat perception, trust, ideological distance, grievances,
-  alliance obligations), each with its own update rule and decay; historical grievances decay but leave a floor.
-* Actions chosen per country from a small action set (propose/accept treaty, sanction, recognise, mediate, join
-  organisation) via the same bounded utility + logit choice as domestic politics, evaluated only for relevant pairs
-  (neighbours, major trade partners, great powers, alliance partners) — sparse, not N².
-* Treaties are bargaining outcomes (Nash bargaining over a surplus with outside options); obligations are stored and
-  breaking them costs trust with all observers.
+Relations live on a sparse set of ~5,000 country pairs: trading partners, land neighbours, treaty co-members,
+sanction pairs, pairs with a conflict history and all pairs among the 12 largest military powers. Yearly
+(`systems/diplomacy.ts`, weights in `params.ts`):
+
+```
+trust      → tanh(0.9 − 0.35·|UN-voting gap| − 0.5·|democracy gap| + 0.5·ln(1 + 10·trade dependence)
+                  + 0.8·[same defence treaty] + 0.4·(religious similarity − ½) − 0.5·grievance − 0.6·sanctions)
+             relaxes over ~5 years; initial trust is the same formula at baseline
+grievance  initial: conflict history (COW MIDs to 2014, UCDP interstate conflicts 2015-2023), each dispute-year
+           weighted by hostility and decayed with a 15-year memory; adds from crises and sanctions; decays
+threat     i's view of j = proximity × j's share of their combined military capital × (1 − trust)/2
+UN voting  position moves with democratic change (cross-sectional slope 2.05, R² 0.50)
+trade      bilateral flows × (1 − 0.6·sanction intensity) × e^(0.3·Δtrust)   ("friend-shoring")
+```
+
+Decisions are saturating hazards whose constants are solved at t0 to a base rate. Each records its inputs, and the
+country panel shows the decomposition of every relationship's trust (the "why did X do Y" inspector).
+
+| Decision | Drivers | Base rate | Simulated (2024-46) |
+|---|---|---|---|
+| Diplomatic crisis | proximity, threat, grievance, distrust, unrest | ≈ 4/yr (ICB order of magnitude) | ≈ 2.9/yr |
+| Sanctions | need a trigger (coup, democratic crackdown, threat to the sender, serious conflict history); larger sender, distrust, allies already sanctioning (coalitions); deterred by trade at stake | 20 directed/yr (assumption, GSDB inaccessible) | ≈ 18/yr imposed, 16 lifted |
+| UN sanctions | country-level status; lifted collectively, faster after democratisation | — | — |
+| Join a treaty | multilateral treaties only; trust in members, protection against the main threat, proximity; members must trust the applicant | 1.8/yr (ATOP 2001-18) | ≈ 0.4/yr |
+| Leave a treaty | only members that distrust their partners; protection keeps them | 1.8/yr | ≈ 0 |
+| New bilateral pact | trust, shared threat, proximity | 0.39/yr | ≈ 0.1/yr |
+
+**Findings and limits.** The 2001-2018 alliance base rates include post-Cold-War enlargement waves and post-Soviet
+realignments. Today's data offer few candidates that meet the conditions, so the calibrated hazards cannot reach those
+rates. That is reported, not forced. UN voting is the only observed alignment measure; it makes the US look distant
+from most of the Global South (hence a low weight) and misses strategic partnerships (US–Saudi Arabia comes out cool,
+Saudi Arabia–Iran warm). Without wars (Phase 4), grievances decay and the world drifts friendlier: mean trust rises
+from 0.46 to 0.59 in 150 years and the sanctions stock falls from ~200 to ~50 directed pairs. Early versions showed
+why the trigger and size rules exist: rich states sanctioned random small countries, and Malawi "lifted its
+sanctions" on North Korea when UN sanctions were modelled as 199 bilateral ones.
 
 ### 3.6 Conflict [design, Phase 4]
 
@@ -295,7 +323,9 @@ from calendar boundary to boundary:
                              → politics.quarterly (approval → legitimacy → unrest → elections → coups → uprisings
                                → regime categories) → chronicle.quarterly
 every 1 Jan                  demography.yearly (cohort step → migration → transition) → economy.yearly
-                             → religion.yearly (secularisation, indices) → chronicle.yearly → history.record
+                             → religion.yearly (secularisation, indices) → diplomacy.yearly (UN position →
+                               trust → crises, sanctions, alliances → trade multipliers, sanction costs)
+                             → chronicle.yearly → history.record
 ```
 
 Phase 3/4 will add a **daily phase** (active conflicts only) and an **event queue** (priority queue keyed by day) for
@@ -321,11 +351,11 @@ Measured with `npm run bench` (Node 22, one core of a 2.1 GHz Xeon):
 
 | Measurement | Result |
 |---|---|
-| 300 simulated years, 200 countries | 2.2 s (7.3 ms / year); Phase 1 was 0.84, Phase 2 5.2 ms / year |
-| per year: demography / economy / politics / religion / chronicle | 4.1 / 1.0 / 1.2 / 0.03 / 0.3 ms |
-| scaling: 200 / 400 / 800 / 1600 entities | 6.9 / 17.6 / 26.9 / 51.5 ms per year (≈ linear) |
-| save (300 years of history and 76k events) | 308 ms, 14.3 MB JSON |
-| load / full replay of 300 years | 216 ms / 2.1 s |
+| 300 simulated years, 200 countries | 4.0 s (13.4 ms / year); Phase 1 0.84, Phase 2 5.2, Phase 3a 7.3 ms / year |
+| per year: demography / economy / politics / religion / diplomacy / chronicle | 3.3 / 0.9 / 1.0 / 0.03 / 5.9 / 0.3 ms |
+| scaling: 200 / 400 / 800 / 1600 entities | 15.8 / 28.7 / 57.6 / 115.5 ms per year (≈ linear) |
+| save (300 years of history and 80k events) | 314 ms, 15.4 MB JSON |
+| load / full replay of 300 years | 321 ms / 4.1 s |
 | determinism, 3 runs | identical hashes |
 
 Demography dominates: each year every country re-solves two Siler parameters per sex (warm-started Newton with
@@ -337,7 +367,7 @@ In the browser the worker posts a frame every 50 ms; the UI stays responsive at 
 
 | Operation | Naïve cost | Plan |
 |---|---|---|
-| Dyadic diplomacy | O(N²) per tick | sparse relevant-pair graph (neighbours, partners, powers); update only on change or monthly |
+| Dyadic diplomacy | O(N²) per tick | done: ~5,000 relevant pairs, yearly; dense n×n pair index (the first version used a hash map and per-pair treaty scans and cost 26 ms / year) |
 | Actor decisions | optimisation per actor per tick | small candidate sets, logit choice, decisions only on triggers or weekly |
 | Trade network | O(N²) gravity flows | done: top-20 partners per country, flows computed on demand from GDP |
 | Warfare | per-region daily | only for regions on active fronts; admin-1 detail loaded on demand |
@@ -380,7 +410,7 @@ licence compatibility to check), terrain/elevation rasters (Natural Earth / ETOP
 | 1 ✅ | Baseline data pipeline, engine core, demography & economy prototypes, save/load/rewind/branch, map UI | invariants + reproducibility tests green; UI drives the worker |
 | 2 ✅ | Single-year age × sex cohorts; Siler life tables; sectors; oil price; inflation; procyclical investment; gravity trade network; 2000 baseline and backtest | backtest 2000→2023 reported per region with naive benchmarks and sensitivity (`docs/BACKTEST.md`). Deferred: resource reserves and depletion, exchange rates, bilateral trade data |
 | 3 (part) ✅ | Religion (31 denominations, secularisation, polarisation); aggregate domestic politics: democracy, regimes, approval, legitimacy, unrest, elections, coups, uprisings | coup and regime-transition rates vs. Powell & Thyne and V-Dem 2001-2023 (§3.4); democracy in the backtest |
-| 3b | Political actors and veto players; party systems; diplomacy graph, alliances (COW/ATOP), treaties, sanctions, organisations; decision inspector ("why did X do Y") | alliance formation and sanction rates vs. ATOP/GSDB; government changes vs. Archigos |
+| 3b ✅ | Diplomacy: relations graph, ATOP defence treaties, sanctions (curated 2023 programmes, UN regimes), crises, friend-shoring; trust inspector | alliance and crisis rates vs. ATOP / ICB (§3.5). Deferred: explicit political actors and veto players, party systems, international organisations beyond defence treaties |
 | 4 | Military forces, conflict onset/bargaining, front-line model, occupation, settlements, territorial change, nuclear deterrence | conflict onset and duration distributions vs. UCDP/COW across many seeds |
 | 5 | Technology domains & diffusion; environment & disasters; migration push/pull; ideology & society | sensitivity analysis of long-run outcomes |
 | 6 | Calibration (simulated method of moments over many seeds), pathology hunting, profiling-driven optimisation; Rust/WASM core if profiling justifies | 500-year runs without degenerate outcomes; ensemble statistics |
@@ -420,3 +450,6 @@ licence compatibility to check), terrain/elevation rasters (Natural Earth / ETOP
 12. **Religion data age and definitions.** The composition is from 2010 (WRP) and definitions differ from Pew's
    (WRP counts China as 42% syncretic and 33% non-religious; Pew counts 52% unaffiliated), so the world
    non-religious share starts at ~10% rather than Pew's ~24%.
+13. **Diplomacy calibration is thin.** Sanction rates have no validated target (the Global Sanctions Data Base needs
+   registration), the alliance base rates come from an unusual period, and trust weights are assumptions anchored on one
+   observed measure (UN voting). Relations are best read as directions and orders of magnitude.
