@@ -54,6 +54,7 @@ export interface War {
   lvl: number;              // current deviation of ln deaths from sev (AR(1) month to month)
   score: number;            // −1..1: > 0 side a (government / attacker) is winning
   occ: number;              // interstate: share of loc's territory held by the attacker (0..maxOccupation)
+  held: number[];           // interstate: provinces of loc the attacker holds, in the order taken (approximates occ)
   deaths: number;           // cumulative battle deaths
   rate: number;             // battle deaths per year, current
   peak: number;             // highest yearly rate so far
@@ -92,7 +93,8 @@ export interface WorldState {
   pair: Record<PairField, Float64Array>; // diplomatic relations per pair (allocated once the pair list is built)
   treaties: Treaty[];            // defence treaties, members as country indices
   wars: War[];                   // armed conflicts under way
-  regionOwner: Int16Array;       // region index -> country index (-1 = none). Territorial change = editing this.
+  regionOwner: Int16Array;       // map region (admin-0 unit) -> country index at the start (-1 = none)
+  provinceOwner: Int16Array;     // province -> country index; territorial change edits this
   rng: Record<string, Uint32Array>;
   branches: { day: number; seed: number }[]; // reseeds applied during the timeline (replay honours them)
   events: SimEvent[];
@@ -111,6 +113,7 @@ export function createState(baseline: Baseline, seed: number, startDate?: string
     pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, new Float64Array(0)])) as Record<PairField, Float64Array>, treaties: [], wars: [],
     nRel: baseline.meta.religions.length, religion: new Float64Array(n * baseline.meta.religions.length),
     regionOwner: Int16Array.from(baseline.regions.map((r) => (r.owner == null ? -1 : idx.get(r.owner) ?? -1))),
+    provinceOwner: (() => { const ro = new Map(baseline.regions.map((r) => [r.id, r.owner == null ? -1 : idx.get(r.owner) ?? -1])); return Int16Array.from(baseline.provinces.map((p) => ro.get(p.region) ?? -1)); })(),
     rng: {}, branches: [], events: [], history: { years: [], data: Object.fromEntries(HIST_FIELDS.map((k) => [k, []])) as any },
     milestones: {},
   };
@@ -132,8 +135,9 @@ export function cloneState(st: WorldState): WorldState {
     religion: st.religion.slice(),
     pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, st.pair[k].slice()])) as Record<PairField, Float64Array>,
     treaties: st.treaties.map((t) => ({ ...t, members: t.members.slice() })),
-    wars: st.wars.map((w) => ({ ...w, a: w.a.slice(), b: w.b.slice() })),
+    wars: st.wars.map((w) => ({ ...w, a: w.a.slice(), b: w.b.slice(), held: w.held.slice() })),
     regionOwner: st.regionOwner.slice(),
+    provinceOwner: st.provinceOwner.slice(),
     rng: Object.fromEntries(Object.entries(st.rng).map(([k, v]) => [k, v.slice()])),
     branches: st.branches.map((b) => ({ ...b })),
     events: st.events.map((e) => ({ ...e, x: e.x && { ...e.x } })),
@@ -155,6 +159,7 @@ export function hashState(st: WorldState): string {
   mix(enc.encode(JSON.stringify(st.treaties)));
   mix(enc.encode(JSON.stringify(st.wars)));
   mix(new Uint8Array(st.regionOwner.buffer));
+  mix(new Uint8Array(st.provinceOwner.buffer));
   for (const k of Object.keys(st.rng).sort()) mix(new Uint8Array(st.rng[k].buffer));
   mix(enc.encode(JSON.stringify(st.events)));
   mix(enc.encode(JSON.stringify(st.history)));

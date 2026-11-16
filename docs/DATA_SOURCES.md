@@ -10,6 +10,8 @@ runs offline. Raw downloads are cached in `.cache/` (not committed). The baselin
 | Id | Source | Used for | Licence |
 |---|---|---|---|
 | NE | Natural Earth 1:50m Admin 0 – Countries (v5.x), via github.com/nvkelso/natural-earth-vector | region geometry, sovereignty grouping, area, coastline, land neighbours, centroids | Public domain |
+| NE10 | Natural Earth 1:10m Admin 1 – States, Provinces and 1:10m Populated Places (simple) | province geometry (the map), province neighbours, city populations for the fallback province population estimate | Public domain |
+| WD_POP | Wikidata P1082 (population) of each province's Wikidata item, latest value | relative province populations (3,856 of 4,595 provinces), scaled to the World Bank country total | CC0 |
 | NE_EST | Natural Earth `POP_EST`, `GDP_MD` attributes | fallback population/GDP where the World Bank has none | Public domain |
 | WDI | World Bank World Development Indicators API (source 2) | demography, labour, GDP, investment, sectors, trade, military (SIPRI-derived) | CC BY 4.0; some third-party series (e.g. SIPRI military expenditure) carry their own terms |
 | WGI | World Bank Worldwide Governance Indicators API (source 3) | six governance estimates | CC BY 4.0 |

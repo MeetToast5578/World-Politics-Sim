@@ -6,7 +6,7 @@ import { Simulation } from './sim';
 import type { Params } from './params';
 
 const FORMAT = 'world-sim-save';
-const VERSION = 5; // 2: single-year age × sex cohorts; 3: religion and politics; 4: diplomacy; 5: armed conflict
+const VERSION = 6; // 2: single-year age × sex cohorts; 3: religion and politics; 4: diplomacy; 5: armed conflict; 6: provinces
 
 function toB64(bytes: Uint8Array): string {
   let s = '';
@@ -30,7 +30,7 @@ export function saveWorld(sim: Simulation): string {
     f: Object.fromEntries(FIELDS.map((k) => [k, f64(st.f[k])])),
     cohorts: f64(st.cohorts), g: st.g, religion: f64(st.religion), treaties: st.treaties, wars: st.wars,
     pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, f64(st.pair[k])])),
-    regionOwner: Array.from(st.regionOwner),
+    regionOwner: Array.from(st.regionOwner), provinceOwner: Array.from(st.provinceOwner),
     rng: Object.fromEntries(Object.entries(st.rng).map(([k, v]) => [k, Array.from(v)])),
     branches: st.branches, events: st.events, milestones: st.milestones,
     history: { years: st.history.years, data: Object.fromEntries(HIST_FIELDS.map((k) => [k, f32(st.history.data[k])])) },
@@ -60,7 +60,7 @@ export function loadWorld(baseline: Baseline, json: string): Simulation {
       if (a.length !== sim.st.pair[k].length) throw new Error(`Corrupt save: pair field ${k}`);
       return [k, a];
     })) as Record<PairField, Float64Array>,
-    regionOwner: Int16Array.from(s.regionOwner),
+    regionOwner: Int16Array.from(s.regionOwner), provinceOwner: Int16Array.from(s.provinceOwner),
     rng: Object.fromEntries(Object.entries(s.rng as Record<string, number[]>).map(([k, v]) => [k, Uint32Array.from(v)])),
     branches: s.branches, events: s.events, milestones: s.milestones,
     history: {

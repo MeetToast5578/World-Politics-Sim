@@ -29,7 +29,7 @@ export function App() {
   const events = useRef<SimEvent[]>([]);
   const [modeId, setModeId] = useState('political');
   const [selected, setSelected] = useState<number | null>(null);
-  const [hover, setHover] = useState<{ r: MapRegion; x: number; y: number } | null>(null);
+  const [hover, setHover] = useState<{ r: MapRegion; x: number; y: number; i: number } | null>(null);
   const [speed, setSpeed] = useState(365);
   const [message, setMessage] = useState<string | null>(null);
   const [welcome, setWelcome] = useState(() => !readFlag());
@@ -65,11 +65,17 @@ export function App() {
   useEffect(() => { if (!message) return; const t = setTimeout(() => setMessage(null), 6000); return () => clearTimeout(t); }, [message]);
 
   const name = useCallback((c: number) => baseline?.countries[c]?.name ?? '?', [baseline]);
+  // provinces with their current owners (the worker sends owners only when they change)
+  const owners = useRef<number[]>([]);
+  if (frame?.provinceOwner) owners.current = frame.provinceOwner;
+  const ownerVersion = frame?.ownerVersion ?? 0;
   const regions = useMemo<MapRegion[]>(() => {
     if (!baseline) return [];
-    const idx = new Map(baseline.countries.map((c, i) => [c.id, i]));
-    return baseline.regions.map((r) => ({ id: r.id, name: r.name, owner: r.owner ? idx.get(r.owner) ?? -1 : -1 }));
-  }, [baseline]);
+    return baseline.provinces.map((p, i) => ({ id: p.id, name: p.name, owner: owners.current[i] ?? -1 }));
+  }, [baseline, ownerVersion]);
+  const heldKey = frame ? frame.wars.map((w) => w.held.join('.')).join('|') : '';
+  const hatched = useMemo(() => new Set(frame ? frame.wars.flatMap((w) => w.held) : []), [heldKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const occupier = useMemo(() => { const m = new Map<number, number>(); for (const w of frame?.wars ?? []) for (const i of w.held) m.set(i, w.a[0]); return m; }, [heldKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mode = MAP_MODES.find((m) => m.id === modeId)!;
   const modeActive = !mode.needsSelection || selected !== null;
@@ -82,7 +88,7 @@ export function App() {
     return scale && Number.isFinite(v) ? scale.color(v) : NO_DATA;
   }, [mode, modeActive, scale, frame, baseline, selected]);
   const weight = useCallback((c: number) => frame?.metrics.pop[c] ?? 0, [frame]);
-  const onHover = useCallback((r: MapRegion | null, x?: number, y?: number) => setHover(r ? { r, x: x ?? 0, y: y ?? 0 } : null), []);
+  const onHover = useCallback((r: MapRegion | null, x?: number, y?: number, i?: number) => setHover(r ? { r, x: x ?? 0, y: y ?? 0, i: i ?? -1 } : null), []);
 
   if (!baseline || !topo || !frame) {
     return <div className="loading"><p>{message ?? 'Loading the world…'}</p></div>;
@@ -160,11 +166,12 @@ export function App() {
             </select>
           </nav>
           <div className="map-area">
-            <MapView topo={topo} regions={regions} fillFor={fillFor} selected={selected} onSelect={setSelected} onHover={onHover} version={frame.day + modeId.length + (selected ?? -1)} />
+            <MapView topo={topo} regions={regions} fillFor={fillFor} hatched={hatched} selected={selected} onSelect={setSelected} onHover={onHover} version={frame.day + modeId.length + (selected ?? -1)} />
             {hover && (
               <div className="tip" style={{ left: hover.x + 14, top: hover.y + 14 }} role="presentation">
                 <b>{hover.r.owner >= 0 ? name(hover.r.owner) : hover.r.name}</b>
                 {hover.r.owner >= 0 && hover.r.name !== name(hover.r.owner) && <span className="fine">{hover.r.name}</span>}
+                {occupier.has(hover.i) && <span>Occupied by {name(occupier.get(hover.i)!)}</span>}
                 {hoverText && <span>{hoverText}</span>}
               </div>
             )}

@@ -36,6 +36,7 @@ export interface WarInfo {
   rate: number;    // battle deaths per year now
   score: number;   // −1..1, > 0: side a (attacker / government) winning
   occ: number;     // share of loc held by the attacker (interstate)
+  held: number[];  // provinces of loc held by the attacker
 }
 
 export interface Frame {
@@ -49,6 +50,9 @@ export interface Frame {
   world: { pop: number; gdp: number; old: number; oil: number; events: number; years: number[]; popSeries: number[]; gdpSeries: number[] };
   blocLabels: string[]; // labels of multilateral defence treaties, index = metrics.bloc value
   wars: WarInfo[];
+  /** owner (country index) per province; sent only when it changed (null otherwise) */
+  provinceOwner: number[] | null;
+  ownerVersion: number;
   newEvents: SimEvent[];
   resetEvents: boolean; // true: newEvents is the full list (after load / rewind / restart)
   detail: CountryDetail | null;

@@ -19,6 +19,7 @@ let sentEvents = 0;
 let resetEvents = true;
 let carry = 0; // fractional days not yet simulated
 let msPerSimYear = 0;
+let lastOwners = '', ownerVersion = 0;
 const TICK_MS = 50;
 
 const post = (m: FromWorker) => (self as unknown as Worker).postMessage(m);
@@ -91,6 +92,14 @@ function metrics(): Record<string, number[]> {
   return out;
 }
 
+/** Province owners, only when they changed since the last frame (or after a reset). */
+function owners(): { provinceOwner: number[] | null; ownerVersion: number } {
+  const key = sim.st.provinceOwner.join(',');
+  if (key === lastOwners && !resetEvents) return { provinceOwner: null, ownerVersion };
+  lastOwners = key;
+  return { provinceOwner: Array.from(sim.st.provinceOwner), ownerVersion: ++ownerVersion };
+}
+
 function frame(): Frame {
   const st = sim.st, m = metrics();
   let pop = 0, gdp = 0, old = 0;
@@ -106,7 +115,8 @@ function frame(): Frame {
     type: 'frame', day: st.day, startDay: st.startDay, seed: st.seed, playing, branches: st.branches, metrics: m,
     world: { pop, gdp, old: old / pop, oil: Math.exp(st.g.oilLn), events: st.events.length, years: st.history.years, popSeries, gdpSeries },
     blocLabels: largestBlocs().labels,
-    wars: st.wars.map((w) => ({ id: w.id, kind: w.kind, a: w.a, b: w.b, loc: w.loc, start: w.start, goal: w.goal, name: w.name, deaths: w.deaths, rate: w.rate, score: w.score, occ: w.occ })),
+    wars: st.wars.map((w) => ({ id: w.id, kind: w.kind, a: w.a, b: w.b, loc: w.loc, start: w.start, goal: w.goal, name: w.name, deaths: w.deaths, rate: w.rate, score: w.score, occ: w.occ, held: w.held })),
+    ...owners(),
     newEvents, resetEvents, detail: null, perf: { msPerSimYear },
   };
   sentEvents = st.events.length;

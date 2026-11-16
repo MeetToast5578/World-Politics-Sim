@@ -104,6 +104,7 @@ export class Simulation {
       religionYearly(st, this.baseline, p);
       diplomacyYearly(st, this.baseline, p, this.rngs.diplomacy, this.trade, this.pairs);
       conflictYearly(st, p, this.rngs.conflict, this.cnet, this.pairs);
+      applyTradeEffects(st, p, this.trade, this.pairs); // new wars cut trust between belligerents: trade follows at once
       chronicleYearly(st);
       this.recordHistory();
     }
