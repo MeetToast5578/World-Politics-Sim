@@ -41,6 +41,12 @@ export interface Curve {
   drift?: number[]; driftLog?: boolean; driftFrom?: string;
 }
 
+/** A province (Natural Earth admin-1): the unit territory changes hands in. pop is an estimate for the reference
+ *  year (Wikidata where available, scaled to the World Bank total). nb: land-neighbouring province indices. */
+export interface BaselineProvince {
+  id: string; name: string; region: string; pop: number; areaKm2: number; centroid: [number, number]; nb: number[];
+}
+
 export interface Baseline {
   meta: {
     referenceYear: number;
@@ -77,4 +83,5 @@ export interface Baseline {
   };
   countries: BaselineCountry[];
   regions: BaselineRegion[];
+  provinces: BaselineProvince[];
 }

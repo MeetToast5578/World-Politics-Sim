@@ -9,7 +9,7 @@ Sections marked **[implemented]** describe running code; **[design]** describes 
 
 | Area | Status |
 |---|---|
-| Baseline world from public data (200 political entities, 242 map regions) | implemented |
+| Baseline world from public data (200 political entities, 242 map regions, 4,595 provinces) | implemented |
 | Deterministic engine: seeded RNG streams, integer-day calendar, boundary scheduler | implemented |
 | Save / load, rewind (by replay), branching timelines | implemented |
 | Demography: single-year age × sex cohort-component model, Siler life tables, migration, demographic transition | implemented (Phase 2, see §3.1) |
@@ -21,7 +21,7 @@ Sections marked **[implemented]** describe running code; **[design]** describes 
 | Religion: 31 denominations/sects per country, secularisation, fractionalisation and polarisation | implemented (Phase 3, see §3.3) |
 | Domestic politics: democracy index and regime, approval, legitimacy, unrest, elections, coups, uprisings, regime change | implemented, aggregate level (Phase 3, see §3.4); political actors/factions still design |
 | Diplomacy: relations (trust, grievance, threat), defence treaties, sanctions, crises, friend-shoring, "why" inspector | implemented (Phase 3b, see §3.5); international organisations other than defence treaties still design |
-| Armed conflict: civil and interstate wars, fighting, casualties, refugees, war damage, allies, military aid, nuclear deterrence, endings, territorial change | implemented (Phase 4 part 1, see §3.6); front lines at province level and new states from secession still design |
+| Armed conflict: civil and interstate wars, fighting, casualties, refugees, war damage, allies, military aid, nuclear deterrence, endings, territorial change by province | implemented (Phase 4, see §3.6); new states from secession still design |
 | Technology, environment, culture/ideology | design only (Phase 5) |
 
 Regime, democracy, approval, legitimacy, unrest, religion, relations, alliances and sanctions now evolve in the
@@ -101,7 +101,7 @@ written by politics and read by the economy/military on their next run.
 | Treaties & organizations | entity tables with member lists, obligations, budgets | membership drives behaviour, not a scalar |
 | Conflicts | implemented: entity per war (`WorldState.wars`): kind, sides, territory fought over, goal, score, occupied share, battle-death level and cumulative deaths; per country warLoad and conflict memory. Planned: front as contested provinces with control fractions | monthly while active |
 | Beliefs | per actor estimates of others' capability/intent with noise and update lag | imperfect information |
-| Sub-national regions | Natural Earth admin-1 (~4,600) loaded on demand for countries in crisis | multiresolution |
+| Provinces | implemented: Natural Earth admin-1 (4,595), owner per province in `WorldState.provinceOwner`; the map draws provinces | territory changes by province |
 
 ---
 
@@ -287,10 +287,13 @@ sanctions" on North Korea when UN sanctions were modelled as 199 bilateral ones.
 Unit: an armed conflict in UCDP's sense (organised violence with at least 25 battle deaths a year), either **civil**
 (a government against rebels, at most one per country; foreign states may fight for the government or back the
 rebels) or **interstate** (an attacker against a defender, each with allies; fighting is on the defender's territory).
-Initial state: the 33 conflicts under way at the end of 2023 in the UCDP/PRIO Armed Conflict Dataset v26.1 (Russia
+Territory is held and transferred by **province** (Natural Earth 1:10m admin-1, 4,595 units; population per
+province from Wikidata P1082 where available, 3,856 of them, scaled to the World Bank total; otherwise estimated from
+city populations and area). Initial state: the 33 conflicts under way at the end of 2023 in the UCDP/PRIO Armed Conflict Dataset v26.1 (Russia
 against Ukraine, Iran against Israel and 31 civil conflicts), with their 2023 battle deaths (UCDP Battle-Related Deaths
-v26.1) as each conflict's intensity. Only Russia's occupation of Ukraine (≈ 18% of its territory) is curated; UCDP
-has no front lines.
+v26.1) as each conflict's intensity. Only Russia's occupation of Ukraine is curated (Donetsk, Luhansk and
+Zaporizhzhia; Crimea and Sevastopol are Russian provinces in Natural Earth's admin-1 data, which follows control on the
+ground); UCDP has no front lines.
 
 ```
 onset      civil, per country-year (Fearon & Laitin 2003; Hegre & Sambanis 2006):
@@ -298,7 +301,8 @@ onset      civil, per country-year (Fearon & Laitin 2003; Hegre & Sambanis 2006)
                  − 1.0 [liberal democracy] + 3 (unrest − 0.3) + 0.8 polarisation + 4 (youth share − 0.3)
                  + 1.5 conflict memory + 0.5 [a neighbour at war])
            interstate, per pair-year on the diplomatic pair list (Bremer 1992; Russett & Oneal 2001), only land
-           neighbours or pairs with one of the 15 largest militaries, only countries not already in an interstate war:
+           neighbours, or pairs with one of the 15 largest militaries and a quarrel (grievance > 0.3), only countries
+           not already in an interstate war:
              p = 0.08 · logistic(c + 2 [contiguous] + 1.2 grievance − 2 trust − 1.5 [both democracies]
                  + 0.8 parity − 1.2 [allies] − 2.5 nuclear umbrella + 1 max unrest)
            c is solved at t0 so the expected world rate equals UCDP's 1990-2023 rate (civil 4.8 country onsets a year,
@@ -310,24 +314,28 @@ fighting   monthly. Strength = military capital (floor: 1% of GDP accumulated) �
            1/(1 + km/2000)); defenders ×1.5 at home; a government ×(0.5 + legitimacy), rebels 0.6 × the state's
            capital × (0.5 + unrest); military aid from non-belligerents with trust(m, side) − trust(m, enemy) > 0.6
            (3% of their capital per unit above). score += 0.3 · (A − B)/(A + B) · dt + 0.5 √dt · ε, clamped to ±1.
-           A winning attacker occupies the defender's territory at 0.1 × score a year (at most 50%).
+           A winning attacker occupies the defender's territory at 0.1 × score a year (at most 50%): province by
+           province from the border (most-surrounded first; across the sea, the nearest), given back in reverse
+           order when the defender pushes back.
 deaths     battle deaths per year = exp(sev + lvl): sev drawn per war (civil: ln 325 + 1.45 ε; interstate:
            ln 140 + 3.0 ε), lvl an AR(1) (0.94 monthly, sd 0.3). Combatants die among men 18-40; 0.3 civilians per
-           battle death across ages; 30 refugees per battle death (≤ 1% of the population a month) move to land
-           neighbours at peace, by population.
+           battle death across ages; 30 refugees per battle death move to land neighbours at peace, by population.
+           Caps: battle deaths ≤ 1% of the population a year, refugees ≤ 0.4% a month (Syria's worst years ≈ 0.35%
+           and ≈ 0.5%); without them, heavy-tailed draws emptied small countries in 300-year runs.
 damage     warLoad = ln(1 + battle deaths per person-year / 10⁻⁴) on the territory (≈ 3 for Ukraine 2023):
            capital × e^(−0.05·warLoad·dt), productivity × e^(−0.01·warLoad·dt); unrest rises 0.3 per unit above the
            2023 level. Belligerents' military spending moves toward 4% of GDP (+ up to 25% where the war is fought),
            then back to the pre-war level over ~5 years. Interstate wars add grievance (+1.5) and cut trust (−0.3)
            between the sides; both governments get a rally-round-the-flag bonus.
-ending     monthly hazard α/(τ + t) · (1 + score²): civil α = 1.15, τ = 2.5 years; interstate α = 2.1, τ = 1 year
+ending     monthly hazard α/(τ + t) · (1 + score²): civil α = 0.95, τ = 2.5 years; interstate α = 2.1, τ = 1 year
            (Lomax: the longer a war lasts, the less likely it ends in any given month, as in UCDP).
            civil: score > 0.75 government victory; < −0.75 rebel victory (a change of government, democratic with
            probability 0.25, or self-rule for a region if the war was over territory); otherwise a peace agreement
            (35%) or the fighting fades.
-           interstate: |score| > 0.75 victory, otherwise a ceasefire on the current line. The attacker keeps
-           occupied territory (≥ 5%) unless it lost: that share of the defender's people, capital and output moves to
-           it (public debt stays). A victorious attacker in a war over government imposes a new one.
+           interstate: |score| > 0.75 victory, otherwise a ceasefire on the current line. The attacker keeps the
+           provinces it holds (if ≥ 5% of the defender's people) unless it lost: they change owner on the map, and
+           their share of the defender's people, capital and output moves with them (public debt stays). A
+           victorious attacker in a war over government imposes a new one.
 nuclear    a nuclear-armed state (SIPRI 2023 list) whose own territory is > 25% occupied, or whose government a
            foreign army is about to overthrow, uses nuclear weapons with probability 0.5% a month: 2% of the
            target's population killed, a quarter of its capital destroyed, a world oil shock and recession; the
@@ -339,23 +347,25 @@ data build, UCDP 1990-2023):
 
 | Measure | Model | UCDP |
 |---|---|---|
-| civil conflict onsets per year (country level) | 5.4 | 4.8 |
-| countries with a civil conflict (average) | 32.7 | 30.2 |
-| civil spell length in calendar years, q25/q50/q75/q90 (wars started in the simulation) | 1/2/3/5 | 1/2/4/7 |
-| interstate onsets per year | 0.47 | 0.50 |
-| interstate duration in years, q25/q50/q75/q90 | 0.25/0.33/0.83/1.75 | 0/0.42/0.91/2.05 |
-| battle deaths per year (mean) | 62,000 | 65,000 |
-| civil endings: faded / peace agreement / government won / rebels won (incl. self-rule) | 45 / 21 / 14 / 10% (+ 10% self-rule) | ≈ 46 / 35 (agreements + ceasefires) / 10 / 6% (Kreutz 2010) |
+| civil conflict onsets per year (country level) | 4.95 | 4.8 |
+| countries with a civil conflict (average) | 34.7 | 30.2 |
+| civil spell length in calendar years, q25/q50/q75/q90 (wars started in the simulation) | 1/2/4/7 | 1/2/4/7 |
+| interstate onsets per year | 0.53 | 0.50 |
+| interstate duration in years, q25/q50/q75/q90 | 0.25/0.50/1.00/1.91 | 0/0.42/0.91/2.05 |
+| battle deaths per year (mean) | 64,700 | 64,800 |
+| civil endings: faded / peace agreement / government won / rebels won (incl. self-rule) | 46 / 26 / 18 / 6% (+ 4% self-rule) | ≈ 46 / 35 (agreements + ceasefires) / 10 / 6% (Kreutz 2010) |
 
-The longest civil wars are somewhat too short (90th percentile 5 years instead of 7), partly because 20-year runs
-cannot observe wars longer than the run. Over 50 years both onset rates fall (≈ 4.4 civil, ≈ 0.35 interstate a year) because incomes rise and old grievances
-fade; this is the model's mechanism, not a target. The test suite checks these rates on 4 worlds × 20 years.
+Over 50 years both onset rates fall (≈ 4.4 civil, ≈ 0.35 interstate a year) because incomes rise and old grievances
+fade; this is the model's mechanism, not a target. Extrapolated for centuries it ends in a world without armed
+conflict (around 2400 in a typical run), because income strongly lowers the civil-conflict hazard and incomes keep
+growing; whether conflict risk should depend on absolute or relative income is a question for Phase 6 calibration. The test suite checks these rates on 4 worlds × 20 years.
 
-**Limitations.** Territory changes hands as a share of a country (people, capital, output), not as provinces on the
-map; secession creates no new state (rebels win "self-rule"); one civil conflict per country stands for all of UCDP's
-dyads there; non-state and one-sided violence (UCDP's other datasets) are not modelled; major powers occasionally
-start distant wars against small states with no historical analogue (e.g. Japan against an African state), because
-the onset model has no notion of strategic interest beyond trust, grievance and threat.
+**Limitations.** Province populations are fixed weights from the start (people moved with a province are the
+province's share of the country's population at the time); land contiguity between countries is not updated after
+annexations; secession creates no new state (rebels win "self-rule"); one civil conflict per country stands for all of
+UCDP's dyads there; rebels hold no territory on the map; non-state and one-sided violence (UCDP's other datasets) are
+not modelled. Distant wars need a major military and a quarrel; a simulated diplomatic crisis can still create one
+with no historical analogue (about one in 100 interstate wars).
 
 ### 3.7 Technology, environment, society [design, Phase 5]
 
@@ -415,11 +425,11 @@ Measured with `npm run bench` (Node 22, one core of a 2.1 GHz Xeon):
 
 | Measurement | Result |
 |---|---|
-| 300 simulated years, 200 countries | 4.1 s (13.7 ms / year); Phase 1 0.84, Phase 2 5.2, Phase 3a 7.3, Phase 3b 13.4 ms / year |
-| per year: demography / economy / politics / religion / diplomacy / conflict / chronicle | 4.6 / 1.0 / 1.0 / 0.02 / 5.8 / 1.5 / 0.2 ms |
+| 300 simulated years, 200 countries | 3.9 s (13.0 ms / year); Phase 1 0.84, Phase 2 5.2, Phase 3a 7.3, Phase 3b 13.4 ms / year |
+| per year: demography / economy / politics / religion / diplomacy / conflict / chronicle | 3.5 / 0.9 / 1.0 / 0.02 / 5.1 / 1.6 / 0.2 ms |
 | scaling: 200 / 400 / 800 / 1600 entities | 15.6 / 36.2 / 67.3 / 126.8 ms per year (≈ linear) |
 | save (300 years of history and 80k events) | 327 ms, 15.6 MB JSON |
-| load / full replay of 300 years | 393 ms / 4.8 s |
+| load / full replay of 300 years | 357 ms / 3.9 s |
 | determinism, 3 runs | identical hashes |
 
 Demography dominates: each year every country re-solves two Siler parameters per sex (warm-started Newton with
@@ -456,8 +466,10 @@ See `docs/DATA_SOURCES.md` for every source, licence, coverage count and overrid
 * Missing values are explicit. Population/GDP fall back to Natural Earth estimates (flagged `NE_EST`); other fields to
   the regional median (flagged `IMPUTED`; extensive quantities use a per-capita median × own population so no two
   countries receive identical absolute values). Military spending and armed forces are **not** imputed.
-* Borders are Natural Earth de facto boundaries at 1:50m; Crimea, Kashmir, etc. follow Natural Earth's default view.
-  Land neighbours derive from shared topology arcs; maritime neighbours are not yet computed.
+* Country data and land neighbours come from Natural Earth's 1:50m countries (Crimea, Kashmir, etc. as in Natural
+  Earth's default view). The map and territory are Natural Earth's 1:10m provinces, which follow control on the ground:
+  Crimea and Sevastopol are Russian provinces there, so the map shows them as Russia from the start, while 2023
+  country statistics are the World Bank's. Maritime neighbours are not yet computed.
 
 **Data still missing for later phases**: UN WPP fertility/mortality schedules (Phase 2 uses WDI aggregates and
 parametric schedules), trade matrices (UN Comtrade /
@@ -475,8 +487,8 @@ licence compatibility to check), terrain/elevation rasters (Natural Earth / ETOP
 | 2 ✅ | Single-year age × sex cohorts; Siler life tables; sectors; oil price; inflation; procyclical investment; gravity trade network; 2000 baseline and backtest | backtest 2000→2023 reported per region with naive benchmarks and sensitivity (`docs/BACKTEST.md`). Deferred: resource reserves and depletion, exchange rates, bilateral trade data |
 | 3 (part) ✅ | Religion (31 denominations, secularisation, polarisation); aggregate domestic politics: democracy, regimes, approval, legitimacy, unrest, elections, coups, uprisings | coup and regime-transition rates vs. Powell & Thyne and V-Dem 2001-2023 (§3.4); democracy in the backtest |
 | 3b ✅ | Diplomacy: relations graph, ATOP defence treaties, sanctions (curated 2023 programmes, UN regimes), crises, friend-shoring; trust inspector | alliance and crisis rates vs. ATOP / ICB (§3.5). Deferred: explicit political actors and veto players, party systems, international organisations beyond defence treaties |
-| 4 (part) ✅ | Civil and interstate conflict from UCDP 2023, onset, fighting, casualties, refugees, war damage, allies, military aid, nuclear deterrence, endings, territorial change as population/capital shares | onset, duration and battle-death distributions vs. UCDP 1990-2023 across seeds (§3.6) |
-| 4b | Province-level front lines and territory on the map (Natural Earth admin-1 with population estimates), secession creating new states, maritime reach, strategic interests in onset | — |
+| 4 ✅ | Civil and interstate conflict from UCDP 2023, onset, fighting, casualties, refugees, war damage, allies, military aid, nuclear deterrence, endings; provinces (Natural Earth admin-1, Wikidata populations) as the map and the unit of occupation and annexation | onset, duration and battle-death distributions vs. UCDP 1990-2023 across seeds (§3.6) |
+| 4c | Secession creating new states (needs a variable number of countries), rebel-held territory, maritime reach | — |
 | 5 | Technology domains & diffusion; environment & disasters; migration push/pull; ideology & society | sensitivity analysis of long-run outcomes |
 | 6 | Calibration (simulated method of moments over many seeds), pathology hunting, profiling-driven optimisation; Rust/WASM core if profiling justifies | 500-year runs without degenerate outcomes; ensemble statistics |
 | 7 | Rich country histories, timeline replay scrubber, scenario comparison across branches, narrative generation | — |

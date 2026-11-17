@@ -97,7 +97,7 @@ export function describeEvent(e: SimEvent, name: (c: number) => string): Story {
     case 'ceasefire':
       return s(`Ceasefire between ${c} and ${o}`, `Neither side could win. The war lasted ${years(x.years)} and cost ${deaths(x.deaths)} lives in battle.`);
     case 'territory_annexed':
-      return s(`${c} annexes territory from ${o}`, `It keeps the ${pct(x.share)} of ${o} its army holds, home to ${people(e.v!)} people.`);
+      return s(`${c} annexes territory from ${o}`, `It keeps the ${x.provinces > 1 ? `${x.provinces} provinces` : 'province'} its army holds, home to ${people(e.v!)} people (${pct(x.share)} of ${o}'s population).`);
     case 'regime_imposed':
       return s(`${c} installs a new government in ${o}`, `After defeating ${o}'s army.`);
     case 'nuclear_strike':

@@ -177,11 +177,12 @@ export const DEFAULT_PARAMS = {
      *  max per pair-year: even enduring rivalries (India-Pakistan) fight a few times per half-century. */
     interstate: { max: 0.08, contiguity: 2, jointDemocracy: 1.5, grievance: 1.2, distrust: 2, parity: 0.8, alliance: 1.2, nuclear: 2.5, unrest: 1,
       /** Only the largest militaries project force: countries without a land border fight only if one of them
-       *  ranks among the top `projection` by military capital. */
-      projection: 15 },
+       *  ranks among the top `projection` by military capital and the pair has a quarrel (grievance above
+       *  distantGrievance, from past disputes or crises). */
+      projection: 15, distantGrievance: 0.3 },
     /** Duration: termination hazard α/(τ + t) per year (Lomax) times (1 + decisive·score²); fitted to UCDP medians
      *  and tails by the ensemble test. */
-    duration: { civilAlpha: 1.15, civilTau: 2.5, interAlpha: 2.1, interTau: 1.0, decisive: 1 },
+    duration: { civilAlpha: 0.95, civilTau: 2.5, interAlpha: 2.1, interTau: 1.0, decisive: 1 },
     /** Battle deaths per year: lognormal; persistent part drawn per war plus a monthly AR(1) deviation (stationary sd
      *  ≈ 0.9). UCDP BRD 1990-2023, summed per country-year for internal conflicts: median 325, 90th percentile 3,034
      *  (total ln-sd ≈ 1.74); interstate conflict-years: median 138, 90th percentile 7,927 (ln-sd ≈ 3.2). */
@@ -196,7 +197,9 @@ export const DEFAULT_PARAMS = {
     /** Consequences per unit warLoad (≈ 3 for Ukraine 2023, ≈ 0.1 for a minor insurgency): annual destruction of
      *  capital and productivity (Collier 1999: civil war costs ≈ 2% growth/yr; Ukraine 2022 −29% GDP), refugees per
      *  battle death (UNHCR: Ukraine, Syria order 20-40), civilians killed per battle death (assumption 0.3), unrest. */
-    damage: { capital: 0.05, tfp: 0.01, refugeesPerDeath: 30, civiliansPerDeath: 0.3, unrest: 0.3 },
+    damage: { capital: 0.05, tfp: 0.01, refugeesPerDeath: 30, civiliansPerDeath: 0.3, unrest: 0.3,
+      /** caps: battle deaths ≤ 1% of the population a year; refugees ≤ 0.4% a month (Syria 2012-16 ≈ 0.5%). */
+      maxDeathShare: 0.01, maxRefugeeShare: 0.004 },
     /** Mobilisation: belligerents' military spending moves toward 4% of GDP plus up to 25% for the country fought
      *  over (Ukraine 2023 ≈ 37%, Russia ≈ 6%), relaxing back to the pre-war level after (≈ 5 years). */
     mobilise: { base: 0.04, home: 0.25, years: 1, demobYears: 5 },

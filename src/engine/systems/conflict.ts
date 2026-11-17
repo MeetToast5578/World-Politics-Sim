@@ -9,10 +9,10 @@
 //   rebels' with unrest. Battle deaths per year are lognormal (a level drawn per war, a monthly AR(1) deviation);
 //   combatants die among men 18-40, civilians across ages; refugees flee to land neighbours. Capital and productivity
 //   are destroyed in proportion to the war load on the territory. Belligerents mobilise (military spending rises).
-//   An attacker that is winning occupies part of the defender's territory.
+//   An attacker that is winning occupies part of the defender's territory, province by province from the border.
 // Termination: Lomax hazard α/(τ + t) (long wars become ever less likely to end in any given month, as in UCDP),
 //   raised when one side is clearly winning. Outcomes follow the score: victory, ceasefire on the current line
-//   (occupied territory changes hands: people, capital and output move), imposed regime change, rebel victory
+//   (occupied provinces change hands with their people, capital and output), imposed regime change, rebel victory
 //   (regime change or autonomy), peace agreement, or fighting fading out.
 // Nuclear use is possible only for a nuclear state whose own territory is heavily occupied or whose government a
 //   foreign army is overthrowing; its consequences are catastrophic and global.
@@ -37,6 +37,9 @@ export interface ConflictNet {
   contig: Uint8Array;   // n × n land neighbours
   nbrs: number[][];     // land neighbours per country
   nuclear: Uint8Array;  // nuclear-armed states
+  provNb: number[][];   // land-neighbouring provinces
+  provW: Float64Array;  // province population at the start (relative weights for territory)
+  provC: [number, number][]; // province centroids
 }
 
 export function buildConflictNet(b: Baseline): ConflictNet {
@@ -60,7 +63,7 @@ export function buildConflictNet(b: Baseline): ConflictNet {
   nbrs.forEach((l) => l.sort((x, y) => x - y));
   const nuclear = new Uint8Array(n);
   for (const id of b.meta.conflict.nuclear) nuclear[idx.get(id)!] = 1;
-  return { dist, contig, nbrs, nuclear };
+  return { dist, contig, nbrs, nuclear, provNb: b.provinces.map((p) => p.nb), provW: Float64Array.from(b.provinces.map((p) => p.pop)), provC: b.provinces.map((p) => p.centroid) };
 }
 
 /** Military capital, with a floor of 1% of GDP accumulated (SIPRI has no figure for some states at war, e.g. Syria). */
@@ -70,12 +73,13 @@ const reach = (net: ConflictNet, p: Params, n: number, c: number, loc: number) =
 
 function emit(st: WorldState, e: Omit<SimEvent, 'd'>) { st.events.push({ d: st.day, ...e }); }
 
-/** Pairs that can fight: land neighbours, or pairs including one of the largest militaries (power projection). */
-function canFight(st: WorldState, p: Params, net: ConflictNet): (i: number, j: number) => boolean {
+/** Pairs that can fight: land neighbours; otherwise one of the largest militaries (power projection) and a quarrel
+ *  (grievance from past disputes): great powers do not attack distant states they have no history with. */
+function canFight(st: WorldState, p: Params, net: ConflictNet): (i: number, j: number, q: number) => boolean {
   const n = st.n, rank = Array.from({ length: n }, (_, c) => c).sort((x, y) => effMil(st, p, y) - effMil(st, p, x) || x - y);
   const major = new Uint8Array(n);
   for (const c of rank.slice(0, p.conflict.interstate.projection)) major[c] = 1;
-  return (i, j) => net.contig[i * n + j] === 1 || major[i] === 1 || major[j] === 1;
+  return (i, j, q) => net.contig[i * n + j] === 1 || ((major[i] === 1 || major[j] === 1) && st.pair.grievance[q] > p.conflict.interstate.distantGrievance);
 }
 
 /** 1 for countries fighting an interstate war. */
@@ -136,12 +140,18 @@ export function initConflict(st: WorldState, b: Baseline, p: Params, net: Confli
     st.wars.push({
       id: st.g.warSeq++, kind: a.kind, a: a.kind === 'civil' ? [loc, ...A.filter((x) => x !== loc)] : A, b: B, loc,
       start: parseDate(a.start), goal: a.goal, name: a.name, sev: Math.log(Math.max(25, a.deaths)), lvl: 0, score: 0,
-      // shortcut: occupied share is curated only for Russia-Ukraine (≈ 18% of Ukraine's territory held by Russia at
-      // the end of 2023, including Crimea); UCDP has no front lines. Other wars start with no occupation.
-      occ: a.kind === 'interstate' && b.countries[A[0]].id === 'RUS' && b.countries[loc].id === 'UKR' ? 0.18 : 0,
+      occ: 0, held: [],
       deaths: 0, rate: Math.max(25, a.deaths), peak: Math.max(25, a.deaths),
     });
     f.warMem[loc] = 1;
+  }
+  // shortcut: occupation is curated only for Russia-Ukraine; UCDP has no front lines. At the end of 2023 Russia held
+  // most of Luhansk and Donetsk and much of Zaporizhzhia (Crimea and Sevastopol are already Russian provinces in
+  // Natural Earth's admin-1 data); here those three provinces. Other wars start with no occupation.
+  for (const w of st.wars) {
+    if (w.kind !== 'interstate' || st.ids[w.a[0]] !== 'RUS' || st.ids[w.loc] !== 'UKR') continue;
+    w.held = b.provinces.map((pr, i) => (st.provinceOwner[i] === w.loc && /Luhansk|Donetsk|Zaporizh/.test(pr.name) ? i : -1)).filter((i) => i >= 0);
+    w.occ = heldShare(st, net, w);
   }
   // conflict trap: memory of internal conflicts that ended before the start
   for (const [id, last] of Object.entries(C.civil.lastYear)) {
@@ -156,7 +166,7 @@ export function initConflict(st: WorldState, b: Baseline, p: Params, net: Confli
   st.g.offCivil = solveOffset(zc, p.conflict.civil.max, C.civil.onsetsPerYear);
   // same candidates as at run time: countries already in an interstate war start no second one
   const ally = allyFlags(st, pn), umb = umbrella(st, net), zi: number[] = [], fighting = interstateFlags(st), can = canFight(st, p, net);
-  for (let q = 0; q < pn.i.length; q++) if (!fighting[pn.i[q]] && !fighting[pn.j[q]] && can(pn.i[q], pn.j[q])) zi.push(interZ(st, p, net, pn, q, ally, umb));
+  for (let q = 0; q < pn.i.length; q++) if (!fighting[pn.i[q]] && !fighting[pn.j[q]] && can(pn.i[q], pn.j[q], q)) zi.push(interZ(st, p, net, pn, q, ally, umb));
   st.g.offWar = solveOffset(zi, p.conflict.interstate.max, C.interstate.onsetsPerYear);
 }
 
@@ -199,6 +209,46 @@ function movePeople(st: WorldState, from: number, to: number, share: number): nu
     for (let x = 0; x < AGES; x++) { const m = co[a + x] * share; co[a + x] -= m; co[b + x] += m; }
   }
   return moved;
+}
+
+/** Share of loc's (start-of-history) population living in the provinces the attacker holds. */
+function heldShare(st: WorldState, net: ConflictNet, w: War): number {
+  let W = 0, H = 0;
+  for (let i = 0; i < st.provinceOwner.length; i++) if (st.provinceOwner[i] === w.loc) W += net.provW[i];
+  for (const i of w.held) H += net.provW[i];
+  return W > 0 ? H / W : 0;
+}
+
+/** Move the front so the provinces held approximate the occupied share: advance from the border (provinces touching
+ *  the attacker's territory or what it already holds, most-surrounded first), retreat in reverse order of capture. */
+function updateHeld(st: WorldState, net: ConflictNet, w: War): void {
+  const own = st.provinceOwner, loc = w.loc;
+  w.held = w.held.filter((i) => own[i] === loc);
+  let W = 0;
+  for (let i = 0; i < own.length; i++) if (own[i] === loc) W += net.provW[i];
+  if (W <= 0) { w.held.length = 0; return; }
+  const held = new Set(w.held), side = new Set(w.a);
+  let share = w.held.reduce((s, i) => s + net.provW[i], 0) / W;
+  while (w.held.length && share - w.occ > net.provW[w.held[w.held.length - 1]] / W / 2) { const i = w.held.pop()!; held.delete(i); share -= net.provW[i] / W; }
+  for (let guard = 0; guard < 400; guard++) {
+    let best = -1, bestScore = 0;
+    for (let i = 0; i < own.length; i++) {
+      if (own[i] !== loc || held.has(i)) continue;
+      let sc = 0;
+      for (const j of net.provNb[i]) if (held.has(j) || side.has(own[j])) sc++;
+      if (sc > bestScore) { best = i; bestScore = sc; }
+    }
+    if (best < 0) { // no land front (across the sea): the province nearest the attacker's territory
+      let d = Infinity;
+      const ac = net.provC.filter((_, i) => side.has(own[i]));
+      for (let i = 0; i < own.length; i++) if (own[i] === loc && !held.has(i)) for (const [lo, la] of ac) {
+        const dd = (net.provC[i][0] - lo) ** 2 + (net.provC[i][1] - la) ** 2;
+        if (dd < d) { d = dd; best = i; }
+      }
+    }
+    if (best < 0 || w.occ - share <= net.provW[best] / W / 2) break;
+    w.held.push(best); held.add(best); share += net.provW[best] / W;
+  }
 }
 
 /** Territory changes hands: a share of the population, capital and output moves from `from` to `to`.
@@ -247,7 +297,7 @@ function changeGovernment(st: WorldState, c: number) {
   f.govYears[c] = 0; f.govTerms[c] = 0; f.approval[c] = 0.5; f.legit[c] = Math.min(f.legit[c], 0.4);
 }
 
-function endWar(st: WorldState, p: Params, w: War, u: number, forceCeasefire = false): void {
+function endWar(st: WorldState, p: Params, net: ConflictNet, w: War, u: number, forceCeasefire = false): void {
   const f = st.f, x = { score: w.score, deaths: w.deaths, years: (st.day - w.start) / 365.25, occ: w.occ, id: w.id };
   const loser = w.loc, att = w.a[0], O = p.conflict.outcome;
   if (w.kind === 'civil') {
@@ -273,9 +323,11 @@ function endWar(st: WorldState, p: Params, w: War, u: number, forceCeasefire = f
     else if (!ceasefire) emit(st, { k: 'war_won', c: loser, o: att, v: w.deaths, x });
     else emit(st, { k: 'ceasefire', c: att, o: loser, v: w.deaths, x });
     // the attacker keeps what it holds unless it lost; a victorious attacker fighting over government imposes one
-    if (w.occ >= 0.05 && (ceasefire || w.score > 0) && w.goal === 'territory') { // small gains are handed back in the settlement
-      const moved = transferTerritory(st, loser, att, w.occ);
-      emit(st, { k: 'territory_annexed', c: att, o: loser, v: moved, x: { ...x, share: w.occ } });
+    if (w.held.length && w.occ >= 0.05 && (ceasefire || w.score > 0) && w.goal === 'territory') { // small gains are handed back in the settlement
+      const share = heldShare(st, net, w), provinces = w.held.length;
+      for (const i of w.held) st.provinceOwner[i] = att;
+      const moved = transferTerritory(st, loser, att, share);
+      emit(st, { k: 'territory_annexed', c: att, o: loser, v: moved, x: { ...x, share, provinces } });
     }
     if (!ceasefire && w.score > 0 && w.goal === 'government') {
       emit(st, { k: 'regime_imposed', c: att, o: loser, x });
@@ -308,11 +360,12 @@ export function conflictMonthly(st: WorldState, p: Params, rng: Rng, net: Confli
     w.score = clamp(w.score + P.fight.kappa * bal * MONTH + P.fight.noise * Math.sqrt(MONTH) * u1, -1, 1);
     w.lvl = P.deaths.lvlRho * w.lvl + P.deaths.lvlSd * u2;
     const wasMinor = w.peak < 1000;
-    w.rate = Math.exp(w.sev + w.lvl); w.peak = Math.max(w.peak, w.rate);
+    // at most maxDeathShare of the population a year (Syria's worst years ≈ 0.35%, Ukraine 2023 ≈ 0.2%)
+    w.rate = Math.min(Math.exp(w.sev + w.lvl), P.damage.maxDeathShare * totalPop(st, w.loc)); w.peak = Math.max(w.peak, w.rate);
     if (w.kind === 'civil' && wasMinor && w.peak >= 1000) emit(st, { k: 'civil_war_escalated', c: w.loc, v: w.rate });
     const md = w.rate * MONTH;
     w.deaths += md;
-    if (w.kind === 'interstate') w.occ = clamp(w.occ + P.fight.occSpeed * w.score * MONTH, 0, P.fight.maxOccupation);
+    if (w.kind === 'interstate') { w.occ = clamp(w.occ + P.fight.occSpeed * w.score * MONTH, 0, P.fight.maxOccupation); updateHeld(st, net, w); }
     // casualties: in civil wars all on the territory; in interstate wars split by the other side's strength
     if (w.kind === 'civil') kill(st, w.loc, md, true);
     else {
@@ -320,8 +373,8 @@ export function conflictMonthly(st: WorldState, p: Params, rng: Rng, net: Confli
       kill(st, w.a[0], md * sa, true); kill(st, w.loc, md * (1 - sa), true);
     }
     kill(st, w.loc, md * P.damage.civiliansPerDeath, false);
-    // refugees to land neighbours, by population (lost if there is none); at most 1% of the population a month
-    const refugees = Math.min(0.01 * totalPop(st, w.loc), md * P.damage.refugeesPerDeath), nb = net.nbrs[w.loc].filter((j) => !belligerent[j] && j !== w.a[0]);
+    // refugees to land neighbours, by population (lost if there is none); at most maxRefugeeShare of the population a month
+    const refugees = Math.min(P.damage.maxRefugeeShare * totalPop(st, w.loc), md * P.damage.refugeesPerDeath), nb = net.nbrs[w.loc].filter((j) => !belligerent[j] && j !== w.a[0]);
     const nbPop = nb.reduce((s, j) => s + totalPop(st, j), 0);
     if (refugees > 0) {
       if (nbPop > 0) for (const j of nb) movePeople(st, w.loc, j, (refugees * totalPop(st, j)) / nbPop / totalPop(st, w.loc));
@@ -334,13 +387,13 @@ export function conflictMonthly(st: WorldState, p: Params, rng: Rng, net: Confli
     if (w.kind === 'interstate' && net.nuclear[w.loc] && (w.occ > P.nuclear.occupied || (w.goal === 'government' && w.score > 0.7)) && uNuc < P.nuclear.useMonthly) {
       nuclearStrike(st, p, w.loc, w.a[0], w);
       if (net.nuclear[w.a[0]] && uRet < P.nuclear.retaliate) nuclearStrike(st, p, w.a[0], w.loc, w);
-      w.occ = 0;
-      endWar(st, p, w, uOut, true);
+      w.occ = 0; w.held = [];
+      endWar(st, p, net, w, uOut, true);
       continue;
     }
     const t = (st.day - w.start) / 365.25, D = P.duration;
     const h = (w.kind === 'civil' ? D.civilAlpha / (D.civilTau + t) : D.interAlpha / (D.interTau + t)) * (1 + D.decisive * w.score * w.score);
-    if (uEnd < 1 - Math.exp(-h * MONTH)) endWar(st, p, w, uOut);
+    if (uEnd < 1 - Math.exp(-h * MONTH)) endWar(st, p, net, w, uOut);
   }
   for (let c = 0; c < n; c++) if (home[c] || belligerent[c]) aggregate(st, c);
   updateWarLoad(st);
@@ -366,7 +419,7 @@ export function conflictYearly(st: WorldState, p: Params, rng: Rng, net: Conflic
     if (u >= P.civil.max * logistic(z)) continue;
     const sev = Math.log(P.deaths.civilMedian) + P.deaths.civilSd * uSev;
     st.wars.push({ id: st.g.warSeq++, kind: 'civil', a: [c], b: [], loc: c, start: st.day, goal: uGoal < 0.5 ? 'territory' : 'government', name: null,
-      sev, lvl: 0, score: 0, occ: 0, deaths: 0, rate: Math.exp(sev), peak: Math.exp(sev) });
+      sev, lvl: 0, score: 0, occ: 0, held: [], deaths: 0, rate: Math.exp(sev), peak: Math.exp(sev) });
     f.warMem[c] = 1;
     emit(st, { k: 'civil_war_started', c, v: Math.exp(sev), x: { unrest: f.unrest[c], income: gdpPppPc(st, c), regime: f.regime[c], polar: f.relPolar[c], hazard: P.civil.max * logistic(z) } });
   }
@@ -375,7 +428,7 @@ export function conflictYearly(st: WorldState, p: Params, rng: Rng, net: Conflic
   for (let q = 0; q < pn.i.length; q++) {
     const u = rng.next(), uSev = rng.normal(), uSub = rng.nextU32();
     const i = pn.i[q], j = pn.j[q];
-    if (fighting[i] || fighting[j] || !can(i, j)) continue;
+    if (fighting[i] || fighting[j] || !can(i, j, q)) continue;
     const z = interZ(st, p, net, pn, q, ally, umb) + st.g.offWar;
     if (u >= P.interstate.max * logistic(z)) continue;
     // the attacker: the side with more usable force, discounted by democracy (democracies initiate less)
@@ -383,7 +436,7 @@ export function conflictYearly(st: WorldState, p: Params, rng: Rng, net: Conflic
     const [att, def] = si >= sj ? [i, j] : [j, i];
     const sev = Math.log(P.deaths.interMedian) + P.deaths.interSd * uSev;
     const w: War = { id: st.g.warSeq++, kind: 'interstate', a: [att], b: [def], loc: def, start: st.day, goal: net.contig[att * n + def] ? 'territory' : 'government',
-      name: null, sev, lvl: 0, score: 0, occ: 0, deaths: 0, rate: Math.exp(sev), peak: Math.exp(sev) };
+      name: null, sev, lvl: 0, score: 0, occ: 0, held: [], deaths: 0, rate: Math.exp(sev), peak: Math.exp(sev) };
     emit(st, { k: 'war_started', c: att, o: def, v: Math.exp(sev), x: { trust: st.pair.trust[q], grievance: st.pair.grievance[q], hazard: P.interstate.max * logistic(z) } });
     // allies honour defence treaties with a probability rising in trust; members of a treaty with both sides stay out
     const sub = new Rng(uSub);

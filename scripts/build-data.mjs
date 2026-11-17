@@ -1,5 +1,5 @@
 // Data ingestion: downloads public datasets and writes the baseline world used by the engine.
-//   public/data/world.topo.json   region geometry (Natural Earth 1:50m, public domain)
+//   public/data/world.topo.json   province geometry (Natural Earth 1:10m admin-1, simplified, public domain)
 //   public/data/baseline.json     countries, regions, sourced indicators, fitted regressions
 // Every country field is {v, y, s}: value, reference year, source id (see SOURCES).
 // Run: npm run data                 -> baseline.json (reference year 2023) + world.topo.json
@@ -11,6 +11,7 @@ import path from 'node:path';
 import { topology } from 'topojson-server';
 import { neighbors, feature, quantize } from 'topojson-client';
 import { geoArea, geoLength, geoCentroid } from 'd3-geo';
+import { buildProvinces } from './provinces.mjs';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const CACHE = path.join(ROOT, '.cache');
@@ -816,6 +817,8 @@ async function main() {
     coverage[field] = by;
   }
 
+  const prov = await buildProvinces(cached, regions, countries);
+
   const baseline = {
     meta: {
       referenceYear: REF_YEAR, minYear: MIN_YEAR, startDate: `${REF_YEAR + 1}-01-01`,
@@ -828,9 +831,10 @@ async function main() {
     },
     countries: countries.map(({ members, ...c }) => c),
     regions: regions.map(({ idx, nePop, nePopYear, neGdpMd, neGdpYear, ...r }) => r),
+    provinces: prov.provinces,
   };
   fs.writeFileSync(path.join(OUT, OUT_NAME), JSON.stringify(baseline));
-  if (OUT_NAME === 'baseline.json') fs.writeFileSync(path.join(OUT, 'world.topo.json'), JSON.stringify(quantize(topo, 1e5)));
+  if (OUT_NAME === 'baseline.json') fs.writeFileSync(path.join(OUT, 'world.topo.json'), JSON.stringify(prov.topo));
   console.log(`countries=${countries.length} regions=${regions.length}`);
   for (const [k, cv] of Object.entries(curves)) if (cv.drift) console.log('drift', k, cv.drift.join(' '));
   for (const [k, v] of Object.entries(coverage)) console.log(k.padEnd(20), JSON.stringify(v));

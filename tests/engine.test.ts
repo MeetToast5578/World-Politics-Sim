@@ -179,6 +179,19 @@ describe('armed conflict', () => {
     for (const c of ['SDN', 'MMR', 'SYR', 'ISR']) expect(wars.some((w) => w.kind === 'civil' && id(w.loc) === c)).toBe(true);
     expect(wars.length).toBe(b.meta.conflict.active.length);
   });
+  it('fronts move province by province: Russia starts holding Donetsk, Luhansk and Zaporizhzhia; held provinces stay consistent', () => {
+    const sim = new Simulation(b, { seed: 3 });
+    const w = sim.st.wars.find((x) => x.kind === 'interstate' && id(x.a[0]) === 'RUS')!;
+    expect(w.held.map((i) => b.provinces[i].name).sort()).toEqual(['Donetsk', 'Luhansk', 'Zaporizhzhia']);
+    const owned0 = [...sim.st.provinceOwner];
+    for (let y = 0; y < 15; y++) {
+      years(sim, 1);
+      for (const x of sim.st.wars) for (const i of x.held) expect(sim.st.provinceOwner[i]).toBe(x.loc);
+    }
+    // every province that changed hands went to a country that annexed territory
+    const gainers = new Set(sim.st.events.filter((e) => e.k === 'territory_annexed').map((e) => e.c));
+    sim.st.provinceOwner.forEach((o, i) => { if (o !== owned0[i]) expect(gainers.has(o)).toBe(true); });
+  });
   it('a change of territory moves people, capital and output without creating or losing any', () => {
     const sim = new Simulation(b, { seed: 1 }), st = sim.st, f = st.f;
     const ukr = st.ids.indexOf('UKR'), rus = st.ids.indexOf('RUS');
