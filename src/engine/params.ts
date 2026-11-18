@@ -163,6 +163,32 @@ export const DEFAULT_PARAMS = {
   /** Annual depreciation of the military capital stock (equipment, training). Assumption. */
   milDepreciation: 0.08,
 
+  // --- international organisations (systems/organisations.ts) ---
+  organisations: {
+    /** trust driver per organisation two countries newly share (lost when one leaves), relative to the start */
+    trust: { EU: 0.3, AU: 0.1, ECOWAS: 0.1, ASEAN: 0.15, MERCOSUR: 0.15, OPEC: 0.1, OECD: 0.15, BRICS: 0.2, SCO: 0.15 } as Record<string, number>,
+    /** trade between two members × e^w (customs unions and free-trade areas; EU membership raises trade by tens of
+     *  per cent in gravity estimates, e.g. Baier & Bergstrand 2007 for FTAs; magnitudes are assumptions) */
+    trade: { EU: 0.5, ASEAN: 0.2, MERCOSUR: 0.3, ECOWAS: 0.15 } as Record<string, number>,
+    /** yearly accession hazard for eligible countries; suspension rules; walk-out of suspended members */
+    rules: {
+      EU: { join: 0.04, minDemocracy: 0.6, suspendCoup: false },
+      AU: { join: 0.5, suspendCoup: true },
+      ECOWAS: { join: 0.03, suspendCoup: true, suspendedExit: 0.25 },
+      ASEAN: { join: 0.03 },
+      MERCOSUR: { join: 0.01, minDemocracy: 0.4 },
+      OPEC: { join: 0.01 },
+      OECD: { join: 0.02, minDemocracy: 0.55 },
+      BRICS: { join: 0.01 },
+      SCO: { join: 0.005 },
+    } as Record<string, { join: number; minDemocracy?: number; suspendCoup?: boolean; suspendedExit?: number }>,
+    exitBase: 0.001, exitTrust: 2.5, readmit: 0.5,
+    /** a former member's accession hazard is multiplied by this */
+    formerRejoin: 0.1,
+    /** OPEC: join above this oil-income weight, leave (10%/yr) below the other */
+    opecJoin: 0.08, opecLeave: 0.02,
+  },
+
   // --- armed conflict (systems/conflict.ts) ---
   // Onset rates and duration / deaths distributions are targets from UCDP (data build); weights are assumptions
   // informed by the quantitative conflict literature cited per line.

@@ -131,6 +131,15 @@ button.close { border: none; font-size: 18px; color: var(--muted); padding: 4px 
 .sectors { display: flex; height: 14px; border-radius: 7px; overflow: hidden; margin: 16px 0 6px; }
 .sectors .agri { background: #8fc49a; } .sectors .ind { background: #e2b46b; } .sectors .serv { background: #7fa7cf; }
 
+/* parliament */
+.parliament { display: flex; height: 18px; border-radius: 4px; overflow: hidden; gap: 2px; margin: 8px 0 6px; }
+.parliament i { display: block; min-width: 3px; outline-offset: -2px; }
+.party-key { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+.party-key li { display: flex; align-items: center; gap: 5px; color: var(--muted); }
+.party-key li.gov { color: var(--ink); font-weight: 700; }
+.party-key i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.party-key span { font-variant-numeric: tabular-nums; }
+
 /* map symbols key */
 .map-key { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); flex-basis: 100%; }
 .map-key li { display: flex; align-items: center; gap: 6px; }

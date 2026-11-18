@@ -46,6 +46,8 @@ export const MAP_MODES: MapMode[] = [
   { id: 'democracy', label: 'Democracy score', group: 'Politics', kind: 'sequential', metric: 'demo', fmt: (v) => v.toFixed(2), about: 'How democratic a country is, from 0 (none) to 1 (full). Starts from V-Dem 2023.', low: 'Autocratic', high: 'Democratic' },
   { id: 'approval', label: 'Government approval', group: 'Politics', kind: 'sequential', metric: 'approval', fmt: (v) => fmtPct(v), about: 'How popular the government is. Starts at 50% everywhere (there is no worldwide polling data).', low: 'Unpopular', high: 'Popular' },
   { id: 'coupRisk', label: 'Coup risk', group: 'Politics', kind: 'sequential', metric: 'coupRisk', log: true, fmt: (v) => fmtPct(v, 1), about: 'Chance of a coup attempt in the next year.', low: 'Low', high: 'High' },
+  { id: 'ideology', label: 'Left or right', group: 'Politics', kind: 'diverging', metric: 'ideology', fmt: (v) => (v < -0.15 ? 'left' : v > 0.15 ? 'right' : 'centre') + ` (${v.toFixed(2)})`, about: 'Where the governing parties stand, from left to right. Grey: no party government (military or junta rule).', low: 'Left', high: 'Right' },
+  { id: 'tradeBlocs', label: 'Unions and blocs', group: 'Politics', kind: 'categorical', metric: 'tradeBloc', about: 'Membership of the European Union, ASEAN, Mercosur, ECOWAS and the African Union. Suspended members are shown separately.' },
   { id: 'government', label: 'Constitution', group: 'Politics', kind: 'categorical', about: 'Form of government written in the constitution (from Wikidata; does not change).' },
   { id: 'sanctioned', label: 'Sanctions', group: 'Politics', kind: 'sequential', metric: 'sanctionLoad', fmt: (v) => fmtPct(v), about: 'How much of the world economy is sanctioning the country.', low: 'None', high: 'Heavy' },
 
@@ -88,6 +90,7 @@ export function categoryOf(mode: MapMode, owner: number, metrics: Record<string,
   if (mode.id === 'government') { const g = b.countries[owner].government.form; return [GOV_LABELS[g], GOV_COLORS[g]]; }
   if (mode.id === 'regime') { const r = metrics.regime[owner]; return [REGIME_LABELS[r], REGIME_COLORS[r]]; }
   if (mode.id === 'war') { const w = metrics.war[owner]; return [WAR_LABELS[w], WAR_COLORS[w]]; }
+  if (mode.id === 'tradeBlocs') { const k = metrics.tradeBloc[owner]; return k === -1 ? ['Not in a bloc', NO_DATA] : k === -2 ? ['Suspended after a coup', '#e0a37c'] : [b.meta.organisations[k].name, BLOC_COLORS[k % BLOC_COLORS.length]]; }
   const label = b.meta.religions[metrics.majorRel[owner]].label;
   return [label, RELIGION_COLORS[label] ?? '#a3a8ad'];
 }

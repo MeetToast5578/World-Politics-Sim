@@ -1,13 +1,15 @@
 // News: plain headlines, newest first. Click one to read why it happened (and jump to the country).
 import { useMemo, useState } from 'react';
 import type { SimEvent } from '../engine/state';
-import { describeEvent, IMPORTANCE } from '../engine/describe';
+import { describeEvent, IMPORTANCE, type NewsContext } from '../engine/describe';
 import { civilFromDays } from '../engine/calendar';
 import { monthName } from './format';
 
 interface Props {
   events: SimEvent[];
   name: (c: number) => string;
+  /** names of organisations and real ruling parties for the news text */
+  ctx?: NewsContext;
   /** population of a country, to rank news from big countries higher */
   weight: (c: number) => number;
   onSelect?: (c: number) => void;
@@ -23,7 +25,7 @@ export function isMajor(e: SimEvent, weight: (c: number) => number): boolean {
   return imp >= 3 || (imp === 2 && size >= 15e6) || (imp === 1 && size >= 150e6);
 }
 
-export function NewsList({ events, name, weight, onSelect, country, limit = 60 }: Props) {
+export function NewsList({ events, name, ctx, weight, onSelect, country, limit = 60 }: Props) {
   const [all, setAll] = useState(country !== undefined);
   const [open, setOpen] = useState<string | null>(null);
   const shown = useMemo(() => {
@@ -48,7 +50,7 @@ export function NewsList({ events, name, weight, onSelect, country, limit = 60 }
       {shown.length === 0 && <p className="empty">{country === undefined ? 'Nothing has happened yet. Press Play to start history.' : 'No news from here yet.'}</p>}
       <ol className="news-list">
         {shown.map((e, i) => {
-          const key = `${e.d}-${e.k}-${e.c}-${e.o ?? ''}-${i}`, story = describeEvent(e, name), { y, m } = civilFromDays(e.d);
+          const key = `${e.d}-${e.k}-${e.c}-${e.o ?? ''}-${i}`, story = describeEvent(e, name, ctx), { y, m } = civilFromDays(e.d);
           const isOpen = open === key;
           return (
             <li key={key} className={`imp${IMPORTANCE[e.k] ?? 1}`}>

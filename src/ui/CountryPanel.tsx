@@ -11,6 +11,7 @@ import { WarList } from './WarList';
 import type { WarInfo } from '../worker/protocol';
 import { fmtNum, fmtPct, fmtUsd } from './format';
 import { GOV_LABELS } from './mapModes';
+import { partyName, PARTY_POS, VOTE_FIELDS } from '../engine/systems/parties';
 import { REGIME_WORDS, REGIME_EXPLAIN, incomeWord, unrestWord, approvalWord, relationWord, relationReasons, riskWord, trend } from './words';
 
 interface Props {
@@ -87,7 +88,7 @@ export function CountryPanel({ baseline: b, detail, events, name, weight, coupRi
             <LineChart label="Income per person" years={years} values={h.gdpPc} fmt={fmtUsd} />
           </div>
           <h3>News from {bc.name}</h3>
-          <NewsList events={events} name={name} weight={weight} onSelect={onSelect} country={detail.c} limit={12} />
+          <NewsList events={events} name={name} ctx={{ org: (o) => b.meta.organisations[o]?.name ?? '?', party: (c) => b.countries[c]?.rulingParty?.name }} weight={weight} onSelect={onSelect} country={detail.c} limit={12} />
         </div>
       )}
 
@@ -149,12 +150,22 @@ export function CountryPanel({ baseline: b, detail, events, name, weight, coupRi
             {f.govTerms > 0 ? ` and has been re-elected ${f.govTerms} time${f.govTerms > 1 ? 's' : ''}` : ''}.
             {f.regime >= 1 && f.nextElection >= 0 ? ` Next election: ${formatDate(f.nextElection).slice(0, 7)}.` : ' No elections are scheduled.'}
           </p>
-          <p className="fine">Constitution: {GOV_LABELS[bc.government.form]}. Whether the government leans left or right is not known from data, so the simulation guessed it ({f.ideology > 0.2 ? 'right' : f.ideology < -0.2 ? 'left' : 'centre'}).</p>
+          <Parliament b={b} detail={detail} />
+          <p className="fine">Constitution: {GOV_LABELS[bc.government.form]} ({f.propRep ? 'seats shared out in proportion to votes' : 'winner-takes-most elections'}).</p>
         </div>
       )}
 
       {tab === 'Relations' && (
         <div role="tabpanel">
+          <h3>Organisations</h3>
+          {(() => {
+            const rows = b.meta.organisations.map((o, k) => ({ o, s: detail.orgs[k] })).filter((r) => r.s === 1 || r.s === 2);
+            const former = b.meta.organisations.filter((_, k) => detail.orgs[k] === 3).map((o) => o.name);
+            return <>
+              {rows.length ? <ul className="plain-list">{rows.map(({ o, s }) => <li key={o.id}>{o.name}{s === 2 && <span className="pill bad"> suspended</span>}</li>)}</ul> : <p className="plain">Not a member of the major unions and blocs.</p>}
+              {former.length > 0 && <p className="fine">Former member of {former.join(', ')}.</p>}
+            </>;
+          })()}
           <h3>Alliances</h3>
           {treaties.length ? <ul className="plain-list">{treaties.map((t) => <li key={t.label}>{t.label}{t.members > 2 && <span className="fine"> ({t.members} members)</span>}</li>)}</ul> : <p className="plain">Not in any military alliance.</p>}
           <h3>Sanctions</h3>
@@ -176,6 +187,29 @@ export function CountryPanel({ baseline: b, detail, events, name, weight, coupRi
 }
 
 const a = (word: string) => (/^[aeiou]/i.test(word) ? 'An' : 'A');
+
+const PARTY_COLORS = ['#b3261e', '#e07b7b', '#5aa469', '#e8c547', '#6f9fd8', '#2e5c9e', '#5b4a8a', '#9a7b4f'];
+
+/** Vote shares of the eight party families, governing parties marked; the real ruling party's name while it governs. */
+function Parliament({ b, detail }: { b: Baseline; detail: CountryDetail }) {
+  const f = detail.fields, bc = b.countries[detail.c], lead = f.govLead, mask = f.govMask | 0;
+  const v = VOTE_FIELDS.map((k) => f[k]), order = v.map((_, i) => i).filter((i) => v[i] >= 0.01).sort((x, y) => PARTY_POS[x] - PARTY_POS[y]);
+  const label = (i: number) => (f.realParty && i === lead && bc.rulingParty ? bc.rulingParty.name : partyName(i, f.relFam));
+  if (lead < 0) return <div className="callout"><b>{lead === -1 ? 'Military rule' : 'Ruled by a council, not by parties'}</b><p>Parties have no say until elections return.</p></div>;
+  return (
+    <>
+      <h3>{f.regime >= 1 ? 'Parliament' : 'Ruling party'}</h3>
+      <p className="plain">Governed by <b>{label(lead)}</b>{(mask & ~(1 << lead)) ? ` with ${order.filter((i) => i !== lead && (mask >> i) & 1).map(label).join(' and ')}` : ''}.</p>
+      {f.regime >= 1 && <>
+        <div className="parliament" aria-label="Vote shares from left to right">
+          {order.map((i) => <i key={i} style={{ flex: v[i], background: PARTY_COLORS[i], outline: (mask >> i) & 1 ? '2px solid #1f2f3a' : 'none' }} title={`${label(i)}: ${fmtPct(v[i])}`} />)}
+        </div>
+        <ul className="party-key">{order.map((i) => <li key={i} className={(mask >> i) & 1 ? 'gov' : ''}><i style={{ background: PARTY_COLORS[i] }} />{label(i)} <span>{fmtPct(v[i])}</span></li>)}</ul>
+      </>}
+      <p className="fine">{f.realParty && bc.rulingParty ? `${bc.rulingParty.name} governed at the start (Wikidata). ` : ''}The other parties are simulated families of parties, not real ones: no open dataset covers party systems worldwide.</p>
+    </>
+  );
+}
 
 function listPhrase(lead: string, names: string[]): string {
   if (!names.length) return lead === 'Sanctioned by' ? 'Not under sanctions.' : 'Imposes no sanctions.';

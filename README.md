@@ -11,10 +11,13 @@ with technology diffusion through trade, business cycles with a world shock and 
 inflation, sector shares, public debt with fiscal reaction and sovereign default, military capital); religion by
 31 denominations and sects (World Religion Project) with secularisation and religious polarisation; domestic politics
 (V-Dem democracy and regime types, approval, legitimacy, unrest, elections, coups, uprisings, democratisation and
-autocratisation, calibrated to observed base rates); diplomacy (trust, grievance and threat between countries,
+autocratisation, calibrated to observed base rates; parties and coalition governments, starting from each country's real
+ruling party); international organisations (EU, African Union, ECOWAS, ASEAN, Mercosur, OPEC, OECD, BRICS, SCO) that
+countries join, leave or are suspended from; diplomacy (trust, grievance and threat between countries,
 ATOP defence treaties, sanctions, crises, trade shaped by politics); armed conflict (the 33 conflicts UCDP recorded at
 the end of 2023, new civil and interstate wars at UCDP's historical rates, casualties, refugees, war damage, allies,
-military aid, nuclear deterrence, peace deals, ceasefires, and annexations of provinces shown on the map); an event
+military aid, nuclear deterrence, peace deals, ceasefires, annexations of provinces shown on the map, rebel-held
+territory, and new states born from secession); an event
 chronicle that records the causes of each event; pause/play/speed/step, save/load, rewind and branching timelines.
 The map is alive: country names, ripples where news happens, pulsing conflicts, front lines and occupied or rebel-held
 provinces. The interface is written for people, not modellers: plain-language news with a "why" for every event, eight main maps
@@ -22,8 +25,7 @@ plus 21 more, a history bar to go back to any year, and a country view in tabs (
 relations, and a data tab with every source and the raw model state).
 `docs/BACKTEST.md` reports how well the model reproduces 2000→2023 from 2000 data.
 
-**What does not exist yet:** new states from secession (Phase 4c), explicit political actors and parties,
-international organisations beyond defence treaties, technology, environment, ideology. Constitutional form and WGI governance scores are static baseline data. See
+**What does not exist yet:** elites as separate political actors, technology, environment, ideology. Constitutional form and WGI governance scores are static baseline data. See
 [docs/DESIGN.md](docs/DESIGN.md) for the architecture, the models of every subsystem (implemented and planned), the
 roadmap and the main uncertainties.
 

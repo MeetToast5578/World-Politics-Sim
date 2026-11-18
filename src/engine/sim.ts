@@ -26,9 +26,11 @@ import { PAIR_FIELDS, type PairField } from './state';
 import { chronicleQuarterly, chronicleYearly } from './systems/chronicle';
 import { buildConflictNet, initConflict, conflictMonthly, conflictYearly, transferTerritory, type ConflictNet, type SecessionRequest } from './systems/conflict';
 import { extendBaseline, extendTrade, extendPairs, growState, type NewState } from './systems/secession';
+import { initOrganisations, organisationsYearly } from './systems/organisations';
+import { initParties, seizePower } from './systems/parties';
 import { aggregate } from './systems/demography';
 
-export const RNG_STREAMS = ['economy', 'commodity', 'politics', 'diplomacy', 'conflict'] as const;
+export const RNG_STREAMS = ['economy', 'commodity', 'politics', 'diplomacy', 'conflict', 'organisations', 'parties'] as const;
 
 export interface SimConfig { seed: number; startDate?: string; params?: Partial<Params> }
 
@@ -64,6 +66,8 @@ export class Simulation {
     initReligion(this.st, baseline);
     this.reseed(this.st.seed);
     initPolitics(this.st, baseline, this.params, this.rngs.politics);
+    initParties(this.st, baseline, this.rngs.parties);
+    initOrganisations(this.st, baseline);
     initDiplomacy(this.st, baseline, this.params, this.trade, this.pairs);
     this.cnet = buildConflictNet(baseline);
     initConflict(this.st, baseline, this.params, this.cnet, this.pairs);
@@ -108,6 +112,7 @@ export class Simulation {
       economyYearly(st, this.baseline, p, this.trade);
       religionYearly(st, this.baseline, p);
       diplomacyYearly(st, this.baseline, p, this.rngs.diplomacy, this.trade, this.pairs);
+      organisationsYearly(st, this.baseline, p, this.rngs.organisations, this.pairs);
       conflictYearly(st, p, this.rngs.conflict, this.cnet, this.pairs);
       applyTradeEffects(st, p, this.trade, this.pairs); // new wars cut trust between belligerents: trade follows at once
       chronicleYearly(st);
@@ -165,6 +170,7 @@ export class Simulation {
     f.regime[c] = democratic ? 2 : 0; f.demo[c] = f.demo0[c] = democratic ? Math.max(0.5, f.demo[parent]) : Math.min(0.3, f.demo[parent]);
     f.legit[c] = f.legit0[c] = 0.45; f.unrest[c] = f.unrest0[c] = 0.35; f.approval[c] = 0.65; f.perf[c] = 0.5;
     f.govYears[c] = 0; f.govTerms[c] = 0; f.coupMem[c] = 0.5; f.warMem[c] = 1; f.warLoad[c] = f.warLoad0[c] = 0;
+    if (!democratic) seizePower(st, c, false);
     f.nextElection[c] = democratic ? st.day + 365 : -1; f.debtRatio0[c] = 0; f.unSanction[c] = 0; f.sanctionLoad[c] = 0;
     st.newStates.push(ns);
     st.events.push({ d: st.day, k: 'independence', c, o: parent, v: moved, x: { share: r.share, provinces: r.provinces.length, democratic: democratic ? 1 : 0 } });

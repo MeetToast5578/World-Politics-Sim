@@ -23,6 +23,11 @@ export const FIELDS = [
   // politics
   'demo', 'demo0', 'regime', 'approval', 'legit', 'legit0', 'perf', 'unrest', 'unrest0', 'ideology', 'govYears', 'govTerms',
   'nextElection', 'coupMem', 'growthEma', 'growthLong', 'misery0', 'youth0', 'polar0', 'rev0',
+  // parties (systems/parties.ts): vote shares of the eight families, governing family (−1 military, −2 council),
+  // governing coalition (bitmask), dominant religion family code, proportional representation (1) or not (0)
+  'v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'govLead', 'govMask', 'relFam', 'propRep',
+  // 1 while the real party that governed at the start (baseline rulingParty) is still in power
+  'realParty',
   // diplomacy: foreign-policy (UN voting) position, sanction pressure (share of world GDP sanctioning, × intensity)
   'fp', 'fp0', 'sanctionLoad', 'demoPrevY', 'unSanction',
   // governance (static in Phase 1, WGI scale ≈ -2.5..2.5)
@@ -96,6 +101,10 @@ export interface WorldState {
   treaties: Treaty[];            // defence treaties, members as country indices
   wars: War[];                   // armed conflicts under way
   newStates: NewState[];         // countries born during the simulation (index = baseline count + position)
+  nOrg: number;                  // international organisations (baseline.meta.organisations)
+  orgIds: string[];              // their ids, in that order
+  orgMember: Uint8Array;         // country × organisation: 0 none, 1 member, 2 suspended
+  orgMember0: Uint8Array;        // the same at the start (effects are relative to it)
   regionOwner: Int16Array;       // map region (admin-0 unit) -> country index at the start (-1 = none)
   provinceOwner: Int16Array;     // province -> country index; territorial change edits this
   rng: Record<string, Uint32Array>;
@@ -113,7 +122,7 @@ export function createState(baseline: Baseline, seed: number, startDate?: string
   const startDay = parseDate(startDate ?? baseline.meta.startDate);
   const st: WorldState = {
     version: 1, seed: seed >>> 0, startDay, day: startDay, n, ids: cs.map((c) => c.id), f, cohorts: new Float64Array(n * 2 * AGES), g: { oilLn: 0, oilDln: 0, coupBase: 0, offCrisis: 0, offSanction: 0, offJoin: 0, offLeave: 0, offPact: 0, offCivil: 0, offWar: 0, warSeq: 1 },
-    pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, new Float64Array(0)])) as Record<PairField, Float64Array>, treaties: [], wars: [], newStates: [],
+    pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, new Float64Array(0)])) as Record<PairField, Float64Array>, treaties: [], wars: [], newStates: [], nOrg: 0, orgIds: [], orgMember: new Uint8Array(0), orgMember0: new Uint8Array(0),
     nRel: baseline.meta.religions.length, religion: new Float64Array(n * baseline.meta.religions.length),
     regionOwner: Int16Array.from(baseline.regions.map((r) => (r.owner == null ? -1 : idx.get(r.owner) ?? -1))),
     provinceOwner: (() => { const ro = new Map(baseline.regions.map((r) => [r.id, r.owner == null ? -1 : idx.get(r.owner) ?? -1])); return Int16Array.from(baseline.provinces.map((p) => ro.get(p.region) ?? -1)); })(),
@@ -140,6 +149,7 @@ export function cloneState(st: WorldState): WorldState {
     treaties: st.treaties.map((t) => ({ ...t, members: t.members.slice() })),
     wars: st.wars.map((w) => ({ ...w, a: w.a.slice(), b: w.b.slice(), held: w.held.slice() })),
     newStates: st.newStates.map((s) => ({ ...s, provinces: s.provinces.slice(), neighbors: s.neighbors.slice() })),
+    orgIds: st.orgIds.slice(), orgMember: st.orgMember.slice(), orgMember0: st.orgMember0.slice(),
     regionOwner: st.regionOwner.slice(),
     provinceOwner: st.provinceOwner.slice(),
     rng: Object.fromEntries(Object.entries(st.rng).map(([k, v]) => [k, v.slice()])),
@@ -163,6 +173,7 @@ export function hashState(st: WorldState): string {
   mix(enc.encode(JSON.stringify(st.treaties)));
   mix(enc.encode(JSON.stringify(st.wars)));
   mix(enc.encode(JSON.stringify(st.newStates)));
+  mix(st.orgMember); mix(st.orgMember0);
   mix(new Uint8Array(st.regionOwner.buffer));
   mix(new Uint8Array(st.provinceOwner.buffer));
   for (const k of Object.keys(st.rng).sort()) mix(new Uint8Array(st.rng[k].buffer));

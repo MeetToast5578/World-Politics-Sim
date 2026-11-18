@@ -6,7 +6,7 @@ import { Simulation } from './sim';
 import type { Params } from './params';
 
 const FORMAT = 'world-sim-save';
-const VERSION = 7; // 2: single-year age × sex cohorts; 3: religion and politics; 4: diplomacy; 5: armed conflict; 6: provinces; 7: new states
+const VERSION = 8; // 2: single-year age × sex cohorts; 3: religion and politics; 4: diplomacy; 5: armed conflict; 6: provinces; 7: new states; 8: organisations
 
 function toB64(bytes: Uint8Array): string {
   let s = '';
@@ -29,6 +29,7 @@ export function saveWorld(sim: Simulation): string {
     seed: st.seed, startDay: st.startDay, day: st.day, ids: st.ids,
     f: Object.fromEntries(FIELDS.map((k) => [k, f64(st.f[k])])),
     cohorts: f64(st.cohorts), g: st.g, religion: f64(st.religion), treaties: st.treaties, wars: st.wars, newStates: st.newStates,
+    nOrg: st.nOrg, orgIds: st.orgIds, orgMember: Array.from(st.orgMember), orgMember0: Array.from(st.orgMember0),
     pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, f64(st.pair[k])])),
     regionOwner: Array.from(st.regionOwner), provinceOwner: Array.from(st.provinceOwner),
     rng: Object.fromEntries(Object.entries(st.rng).map(([k, v]) => [k, Array.from(v)])),
@@ -56,6 +57,7 @@ export function loadWorld(baseline: Baseline, json: string): Simulation {
     })) as Record<Field, Float64Array>,
     cohorts: new Float64Array(fromB64(s.cohorts).buffer), g: s.g,
     nRel: baseline.meta.religions.length, religion: new Float64Array(fromB64(s.religion).buffer), treaties: s.treaties, wars: s.wars, newStates: s.newStates,
+    nOrg: s.nOrg, orgIds: s.orgIds, orgMember: Uint8Array.from(s.orgMember), orgMember0: Uint8Array.from(s.orgMember0),
     pair: Object.fromEntries(PAIR_FIELDS.map((k) => {
       const a = new Float64Array(fromB64(s.pair[k]).buffer);
       if (a.length !== sim.pairs.i.length) throw new Error(`Corrupt save: pair field ${k}`);

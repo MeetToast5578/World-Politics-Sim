@@ -6,7 +6,7 @@ import { formatDate, civilFromDays } from '../engine/calendar';
 import type { Frame, FromWorker, ToWorker } from '../worker/protocol';
 import { MapView, type MapRegion, type MapLabel, type Ping } from './MapView';
 import { isMajor } from './NewsList';
-import { describeEvent } from '../engine/describe';
+import { describeEvent, type NewsContext } from '../engine/describe';
 import { CountryPanel } from './CountryPanel';
 import { WorldPanel } from './WorldPanel';
 import { Timeline } from './Timeline';
@@ -24,7 +24,7 @@ function pingKind(k: string): keyof typeof PING_COLORS {
   if (/^(war_|territory_|nuclear|civil_war_started|civil_war_escalated|regime_imposed|independence)/.test(k)) return 'war';
   if (/^(ceasefire|peace_deal|conflict_faded|civil_war_won|autonomy_won)/.test(k)) return 'peace';
   if (/^(coup|revolution|regime_overthrown|rebels_won|protests|government_collapse|autocratization)/.test(k)) return 'upheaval';
-  if (/^(election|democratization|elections_restored|alliance|sanctions|un_sanctions|diplomatic)/.test(k)) return 'politics';
+  if (/^(election|democratization|elections_restored|alliance|sanctions|un_sanctions|diplomatic|org_)/.test(k)) return 'politics';
   if (/^(recession|sovereign|oil|inflation|gdp_rank|debt)/.test(k)) return 'economy';
   return 'other';
 }
@@ -54,11 +54,12 @@ export function App() {
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
   // ripples on the map for the major news of each frame (at most 4 at a time, one per country)
   const nameRef = useRef<(c: number) => string>(() => '');
+  const newsRef = useRef<NewsContext>({});
   const addPings = (es: SimEvent[], pop: number[]) => {
     const now = performance.now(), weight = (c: number) => pop[c] ?? 0;
     for (const e of es) {
       if (e.c < 0 || !isMajor(e, weight)) continue;
-      const h = describeEvent(e, nameRef.current).headline;
+      const h = describeEvent(e, nameRef.current, newsRef.current).headline;
       pings.current = [...pings.current.filter((g) => g.c !== e.c), { c: e.c, t: now, color: PING_COLORS[pingKind(e.k)], text: h.length > 48 ? h.slice(0, 46) + '…' : h }].slice(-4);
     }
   };
@@ -93,6 +94,8 @@ export function App() {
   const baseline = useMemo(() => (baseline0 && extra.current.length ? { ...baseline0, countries: [...baseline0.countries, ...extra.current] } : baseline0), [baseline0, extraKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const name = useCallback((c: number) => baseline?.countries[c]?.name ?? '?', [baseline]);
   nameRef.current = name;
+  const news = useMemo(() => ({ org: (o: number) => baseline?.meta.organisations[o]?.name ?? '?', party: (c: number) => baseline?.countries[c]?.rulingParty?.name }), [baseline]);
+  newsRef.current = news;
   // provinces with their current owners (the worker sends owners only when they change)
   const owners = useRef<number[]>([]);
   if (frame?.provinceOwner) owners.current = frame.provinceOwner;
@@ -272,7 +275,7 @@ export function App() {
           {frame.detail && selected !== null
             ? <CountryPanel key={selected} baseline={baseline} detail={frame.detail} events={events.current} name={name} weight={weight}
                 coupRisk={frame.metrics.coupRisk[selected]} wars={frame.wars} startDay={frame.startDay} onSelect={setSelected} onClose={() => setSelected(null)} />
-            : <WorldPanel frame={frame} events={events.current} name={name} weight={weight} onSelect={setSelected} />}
+            : <WorldPanel frame={frame} events={events.current} name={name} news={news} weight={weight} onSelect={setSelected} />}
         </aside>
       </main>
 

@@ -111,5 +111,7 @@ export function growState(st: WorldState, ns: NewState, parent: number, net: Pai
     st.pair.trust[q] = st.pair.trust0[q] = t;
     st.pair.grievance[q] = other === parent ? 2 : 0;
   }
+  const grow8 = (a: Uint8Array) => { const o = new Uint8Array(n * st.nOrg); o.set(a); return o; }; // a new state belongs to nothing yet
+  st.orgMember = grow8(st.orgMember); st.orgMember0 = grow8(st.orgMember0);
   st.n = n; st.ids.push(ns.id);
 }

@@ -26,6 +26,7 @@ import { aggregate, gdpPppPc } from './demography';
 import { youthShare } from './politics';
 import { religionIndices } from './religion';
 import { pairOf, allyFlags, type PairNet } from './diplomacy';
+import { seizePower } from './parties';
 
 const MONTH = 1 / 12;
 const logistic = (x: number) => 1 / (1 + Math.exp(-x));
@@ -211,10 +212,22 @@ function movePeople(st: WorldState, from: number, to: number, share: number): nu
   return moved;
 }
 
+// provinces per owner, rebuilt lazily whenever ownership may have changed (annexation, independence, load)
+let ownedCache: { of: Int16Array; key: string; lists: number[][] } | null = null;
+function provincesOf(st: WorldState, c: number): number[] {
+  const own = st.provinceOwner, key = `${st.n}:${st.day}:${st.events.length}`;
+  if (!ownedCache || ownedCache.of !== own || ownedCache.key !== key) {
+    const lists: number[][] = Array.from({ length: st.n }, () => []);
+    for (let i = 0; i < own.length; i++) if (own[i] >= 0) lists[own[i]].push(i);
+    ownedCache = { of: own, key, lists };
+  }
+  return ownedCache.lists[c] ?? [];
+}
+
 /** Share of loc's (start-of-history) population living in the provinces the attacker holds. */
 function heldShare(st: WorldState, net: ConflictNet, w: War): number {
   let W = 0, H = 0;
-  for (let i = 0; i < st.provinceOwner.length; i++) if (st.provinceOwner[i] === w.loc) W += net.provW[i];
+  for (const i of provincesOf(st, w.loc)) W += net.provW[i];
   for (const i of w.held) H += net.provW[i];
   return W > 0 ? H / W : 0;
 }
@@ -224,19 +237,21 @@ function heldShare(st: WorldState, net: ConflictNet, w: War): number {
 function updateHeld(st: WorldState, net: ConflictNet, w: War): void {
   const own = st.provinceOwner, loc = w.loc;
   w.held = w.held.filter((i) => own[i] === loc);
+  const mine = provincesOf(st, loc);
   let W = 0;
-  for (let i = 0; i < own.length; i++) if (own[i] === loc) W += net.provW[i];
+  for (const i of mine) W += net.provW[i];
   if (W <= 0) { w.held.length = 0; return; }
   const held = new Set(w.held), side = new Set(w.kind === 'interstate' ? w.a : []); // rebels have no territory outside
   // separatists never take the heartland (the most populous province); rebels fighting for the government may
   let capital = -1;
-  if (w.kind === 'civil' && w.goal === 'territory') for (let i = 0; i < own.length; i++) if (own[i] === loc && (capital < 0 || net.provW[i] > net.provW[capital])) capital = i;
+  if (w.kind === 'civil' && w.goal === 'territory') for (const i of mine) if (capital < 0 || net.provW[i] > net.provW[capital]) capital = i;
   let share = w.held.reduce((s, i) => s + net.provW[i], 0) / W;
   while (w.held.length && share - w.occ > net.provW[w.held[w.held.length - 1]] / W / 2) { const i = w.held.pop()!; held.delete(i); share -= net.provW[i] / W; }
+  if (w.occ <= share) return; // the front holds: nothing to take this month
   for (let guard = 0; guard < 400; guard++) {
     let best = -1, bestScore = 0;
-    for (let i = 0; i < own.length; i++) {
-      if (own[i] !== loc || held.has(i) || i === capital) continue;
+    for (const i of mine) {
+      if (held.has(i) || i === capital) continue;
       let sc = 0;
       for (const j of net.provNb[i]) if (held.has(j) || side.has(own[j])) sc++;
       if (sc > bestScore) { best = i; bestScore = sc; }
@@ -245,7 +260,7 @@ function updateHeld(st: WorldState, net: ConflictNet, w: War): void {
     if (best < 0) { // no land front (across the sea): the province nearest the attacker's territory
       let d = Infinity;
       const ac = net.provC.filter((_, i) => side.has(own[i]));
-      for (let i = 0; i < own.length; i++) if (own[i] === loc && !held.has(i)) for (const [lo, la] of ac) {
+      for (const i of mine) if (!held.has(i)) for (const [lo, la] of ac) {
         const dd = (net.provC[i][0] - lo) ** 2 + (net.provC[i][1] - la) ** 2;
         if (dd < d) { d = dd; best = i; }
       }
@@ -257,13 +272,13 @@ function updateHeld(st: WorldState, net: ConflictNet, w: War): void {
 
 /** Where a rebellion takes hold: the province farthest from the country's most populous one (the periphery). */
 function rebelSeed(st: WorldState, net: ConflictNet, w: War, held: Set<number>): number {
-  const own = st.provinceOwner;
+  const mine = provincesOf(st, w.loc);
   let core = -1, best = -1, d = -1;
-  for (let i = 0; i < own.length; i++) if (own[i] === w.loc && (core < 0 || net.provW[i] > net.provW[core])) core = i;
+  for (const i of mine) if (core < 0 || net.provW[i] > net.provW[core]) core = i;
   if (core < 0) return -1;
   const [lo0, la0] = net.provC[core], k = Math.cos((la0 * Math.PI) / 180);
-  for (let i = 0; i < own.length; i++) {
-    if (own[i] !== w.loc || held.has(i) || i === core) continue;
+  for (const i of mine) {
+    if (held.has(i) || i === core) continue;
     const dd = ((net.provC[i][0] - lo0) * k) ** 2 + (net.provC[i][1] - la0) ** 2;
     if (dd > d) { d = dd; best = i; }
   }
@@ -331,7 +346,7 @@ function endWar(st: WorldState, p: Params, net: ConflictNet, w: War, u: number, 
         emit(st, { k: 'rebels_won', c: loser, v: democratic ? 1 : 0, x });
         changeGovernment(st, loser);
         if (democratic) { f.regime[loser] = 2; f.demo[loser] = Math.max(f.demo[loser], 0.5); f.nextElection[loser] = st.day + 365; }
-        else { f.regime[loser] = 0; f.demo[loser] *= 0.6; f.nextElection[loser] = -1; }
+        else { f.regime[loser] = 0; f.demo[loser] *= 0.6; f.nextElection[loser] = -1; seizePower(st, loser, false); }
       } else {
         const share = heldShare(st, net, w);
         if (w.held.length && share >= 0.005 && uSec < O.secession) out.push({ parent: loser, provinces: w.held.slice(), share, u, territory: w.territory ?? null });

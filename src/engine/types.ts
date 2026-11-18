@@ -1,6 +1,6 @@
 // Shape of public/data/baseline.json (produced by scripts/build-data.mjs).
 
-export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI';
+export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI' | 'ORGS';
 
 /** A sourced observation: value, reference year, source. */
 export interface Obs { v: number; y: number; s: SourceId }
@@ -20,6 +20,9 @@ export interface BaselineCountry {
   government: { form: GovForm; basis: string; raw: string | null; s: SourceId | null };
   religion: { s: SourceId; y: number; reliability?: string; proxy?: string; shares: number[] } | null;
   geo: { areaKm2: number; coastKm: number; coreCoastKm: number; landlocked: boolean; centroid: [number, number]; s: SourceId };
+  /** party of the head of government (head of state in presidential systems) at the end of the reference year,
+   *  with its left-right position (Wikidata P1387) and model party family; null where there is none */
+  rulingParty?: { name: string; family: number; pos: number; s: SourceId } | null;
 }
 
 export interface BaselineRegion {
@@ -78,6 +81,8 @@ export interface Baseline {
       /** a: government / first side (with state supporters), b: other side (states; rebels' state backers in civil conflicts) */
       active: { kind: 'interstate' | 'civil'; a: string[]; b: string[]; loc: string; start: string; goal: 'government' | 'territory'; deaths: number; name: string | null; territory?: string | null; intensity: number }[];
     };
+    /** International organisations: members at the reference year (suspended: suspended at its end). */
+    organisations: { id: string; name: string; kind: 'trade' | 'political' | 'economic' | 'club'; url: string; members: { id: string; since: number; suspended: boolean }[]; former: { id: string; left: number }[] }[];
     /** Logistic secularisation ds/dt = r·s·(1 − s/K) fitted on the World Religion Project panel. */
     secularisation: { r: number; K: number; n: number; window: string };
   };
