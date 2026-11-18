@@ -45,6 +45,7 @@ const SOURCES = {
   UNGA: { name: 'UN General Assembly ideal points (Bailey, Strezhnev & Voeten), Harvard Dataverse doi:10.7910/DVN/LEJUQZ', url: 'https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LEJUQZ', license: 'CC0' },
   MID: { name: 'Correlates of War Dyadic Militarized Interstate Disputes 4.03 (to 2014)', url: 'https://correlatesofwar.org/data-sets/mids/', license: 'Free for research use with citation (COW terms)' },
   UCDP: { name: 'UCDP/PRIO Armed Conflict Dataset v26.1 and UCDP Battle-Related Deaths Dataset v26.1', url: 'https://ucdp.uu.se/downloads/', license: 'CC BY 4.0' },
+  ORGS: { name: 'Membership pages of the EU, African Union, ECOWAS, ASEAN, Mercosur, OPEC, OECD, BRICS and SCO (curated, see build script)', url: 'https://au.int/en/member_states/countryprofiles2', license: 'Facts cited' },
   SIPRI: { name: 'SIPRI Yearbook 2023: World nuclear forces', url: 'https://www.sipri.org/yearbook/2023/07', license: 'Facts cited (list of nuclear-armed states)' },
   CURATED: { name: 'Curated from official sanctions lists (OFAC programmes, EU Sanctions Map, UK sanctions list, UN SC committees)', url: 'https://sanctionsmap.eu/', license: 'Facts compiled for this project' },
 };
@@ -361,6 +362,7 @@ async function conflicts(countries) {
     const a = ids(r.gwno_a), b = ids(r.gwno_b);
     if (a.length && b.length) active.push({ kind: 'interstate', a, b, loc: b[0], start: e.r.start_date2, goal: r.incompatibility === '2' ? 'government' : 'territory', deaths: deaths.get(`${r.conflict_id}|${W1}`) ?? 25, name: r.territory_name || null, intensity: +r.intensity_level });
   }
+  const r0ok = (t) => !/^(Islamic State|Fatah|Hamas)/i.test(t); // territory names, not group names
   for (const s of spells.filter((x) => x.last === W1)) {
     const rows = byLoc.get(s.loc).get(W1).filter((r) => !(r.ep_end === '1' && !byLoc.get(s.loc).has(W1 + 1)));
     if (!rows.length) continue;
@@ -369,7 +371,7 @@ async function conflicts(countries) {
     active.push({
       kind: 'civil', a: [s.loc, ...new Set(rows.flatMap((r) => small(r.gwno_a_2nd)))].filter((v, i, arr) => arr.indexOf(v) === i), b: [...new Set(rows.flatMap((r) => small(r.gwno_b_2nd)))].filter((x) => x !== s.loc),
       loc: s.loc, start: `${s.start}-01-01`, goal: rows.some((r) => r.incompatibility !== '1') ? 'government' : 'territory',
-      deaths: d.reduce((x, y) => x + y, 0), name: (() => { const g = main.side_b.split(',').map((x) => x.trim()); return g.length > 3 ? `${g.slice(0, 2).join(', ')} and others` : g.join(', '); })(), intensity: Math.max(...rows.map((r) => +r.intensity_level)),
+      deaths: d.reduce((x, y) => x + y, 0), territory: rows.map((r) => r.territory_name).find((t) => t && r0ok(t)) ?? null, name: (() => { const g = main.side_b.split(',').map((x) => x.trim()); return g.length > 3 ? `${g.slice(0, 2).join(', ')} and others` : g.join(', '); })(), intensity: Math.max(...rows.map((r) => +r.intensity_level)),
     });
   }
   return {
@@ -380,6 +382,88 @@ async function conflicts(countries) {
     battleDeathsPerYear: Math.round(brd.filter((r) => +r.year >= D0 && +r.year <= W1).reduce((x, r) => x + +r.bd_best, 0) / (W1 - D0 + 1)),
     active,
   };
+}
+
+// --- International organisations (curated from the organisations' membership pages; joining year, leaving year) ---
+// Members as ISO3:joined[-left]; suspended: members suspended at the end of the year (AU and ECOWAS suspend after coups).
+const ORGS = [
+  { id: 'EU', name: 'European Union', kind: 'trade', url: 'https://european-union.europa.eu/principles-countries-history/eu-countries_en',
+    members: 'BEL:1958 FRA:1958 DEU:1958 ITA:1958 LUX:1958 NLD:1958 DNK:1973 IRL:1973 GBR:1973-2020 GRC:1981 ESP:1986 PRT:1986 AUT:1995 FIN:1995 SWE:1995 CYP:2004 CZE:2004 EST:2004 HUN:2004 LVA:2004 LTU:2004 MLT:2004 POL:2004 SVK:2004 SVN:2004 BGR:2007 ROU:2007 HRV:2013', suspended: {} },
+  { id: 'AU', name: 'African Union', kind: 'political', url: 'https://au.int/en/member_states/countryprofiles2',
+    members: 'DZA:1963 BEN:1963 BFA:1963 BDI:1963 CMR:1963 CAF:1963 TCD:1963 COG:1963 COD:1963 CIV:1963 EGY:1963 ETH:1963 GAB:1963 GHA:1963 GIN:1963 LBR:1963 LBY:1963 MDG:1963 MLI:1963 MRT:1963 NER:1963 NGA:1963 RWA:1963 SEN:1963 SLE:1963 SOM:1963 SDN:1963 TGO:1963 TUN:1963 UGA:1963 TZA:1963 KEN:1963 MWI:1964 ZMB:1964 GMB:1965 BWA:1966 LSO:1966 MUS:1968 SWZ:1968 GNQ:1968 GNB:1973 AGO:1975 CPV:1975 COM:1975 MOZ:1975 STP:1975 SYC:1976 DJI:1977 ZWE:1980 ESH:1982 NAM:1990 ERI:1993 ZAF:1994 SSD:2011 MAR:2017',
+    suspended: { 2023: ['MLI', 'GIN', 'SDN', 'BFA', 'NER', 'GAB'] } },
+  { id: 'ECOWAS', name: 'ECOWAS', kind: 'trade', url: 'https://ecowas.int/member-states/',
+    members: 'BEN:1975 BFA:1975 CIV:1975 GMB:1975 GHA:1975 GIN:1975 GNB:1975 LBR:1975 MLI:1975 MRT:1975-2000 NER:1975 NGA:1975 SEN:1975 SLE:1975 TGO:1975 CPV:1977',
+    suspended: { 2023: ['MLI', 'GIN', 'BFA', 'NER'] } },
+  { id: 'ASEAN', name: 'ASEAN', kind: 'trade', url: 'https://asean.org/member-states/',
+    members: 'IDN:1967 MYS:1967 PHL:1967 SGP:1967 THA:1967 BRN:1984 VNM:1995 LAO:1997 MMR:1997 KHM:1999', suspended: {} },
+  { id: 'MERCOSUR', name: 'Mercosur', kind: 'trade', url: 'https://www.mercosur.int/en/about-mercosur/mercosur-countries/',
+    members: 'ARG:1991 BRA:1991 PRY:1991 URY:1991 VEN:2012', suspended: { 2023: ['VEN'] } },
+  { id: 'OPEC', name: 'OPEC', kind: 'economic', url: 'https://www.opec.org/opec_web/en/about_us/25.htm',
+    members: 'IRN:1960 IRQ:1960 KWT:1960 SAU:1960 VEN:1960 QAT:1961-2019 IDN:1962-2016 LBY:1962 ARE:1967 DZA:1969 NGA:1971 ECU:1973-2020 GAB:2016 AGO:2007 GNQ:2017 COG:2018', suspended: {} },
+  { id: 'OECD', name: 'OECD', kind: 'club', url: 'https://www.oecd.org/en/about/members-partners.html',
+    members: 'AUT:1961 BEL:1961 CAN:1961 DNK:1961 FRA:1961 DEU:1961 GRC:1961 ISL:1961 IRL:1961 ITA:1961 LUX:1961 NLD:1961 NOR:1961 PRT:1961 ESP:1961 SWE:1961 CHE:1961 TUR:1961 GBR:1961 USA:1961 JPN:1964 FIN:1969 AUS:1971 NZL:1973 MEX:1994 CZE:1995 HUN:1996 POL:1996 KOR:1996 SVK:2000 CHL:2010 SVN:2010 ISR:2010 EST:2010 LVA:2016 LTU:2018 COL:2020 CRI:2021', suspended: {} },
+  { id: 'BRICS', name: 'BRICS', kind: 'club', url: 'https://www.gov.br/mre/en/subjects/international-mechanisms/brics',
+    members: 'BRA:2009 RUS:2009 IND:2009 CHN:2009 ZAF:2010', suspended: {} },
+  { id: 'SCO', name: 'Shanghai Cooperation Organisation', kind: 'club', url: 'https://eng.sectsco.org/',
+    members: 'CHN:2001 RUS:2001 KAZ:2001 KGZ:2001 TJK:2001 UZB:2001 IND:2017 PAK:2017 IRN:2023', suspended: {} },
+];
+function organisations(countries) {
+  const ids = new Set(countries.map((c) => c.id));
+  return ORGS.map(({ members, suspended, ...o }) => {
+    const ms = members.split(' ').map((m) => { const [id, yrs] = m.split(':'); const [since, left] = yrs.split('-').map(Number); return { id, since, left: left || null }; })
+      .filter((m) => m.since <= REF_YEAR && (!m.left || m.left > REF_YEAR));
+    for (const m of ms) if (!ids.has(m.id)) throw new Error(`organisation ${o.id}: unknown member ${m.id}`);
+    const susp = new Set(suspended[REF_YEAR] ?? []);
+    const former = members.split(' ').map((m) => { const [id, yrs] = m.split(':'); const [, left] = yrs.split('-').map(Number); return { id, left: left || null }; }).filter((m) => m.left && m.left <= REF_YEAR && ids.has(m.id));
+    return { ...o, members: ms.map((m) => ({ id: m.id, since: m.since, suspended: susp.has(m.id) })), former };
+  }).filter((o) => o.members.length);
+}
+
+// --- Ruling parties at the end of the reference year (Wikidata) -----------------------------------------------
+// The party of the head of government (head of state in presidential systems) on 31 December, from office-holder
+// statements with start/end dates and the holder's party membership at that date; its political alignment (P1387)
+// gives a left-right position, mapped to the model's party families. Countries without a party (monarchs,
+// independents, juntas) get none and keep a drawn orientation.
+const ALIGN_POS = [[/far-left|left-wing extremism|communism/, -0.9], [/centre-left/, -0.3], [/left-wing/, -0.6], [/centre-right/, 0.3], [/far-right|right-wing extremism|alt-right/, 0.9], [/right-libertarianism/, 0.5], [/right-wing/, 0.6], [/centrism|centre|big tent/, 0]];
+async function rulingParties(regions, countries) {
+  const at = `"${REF_YEAR}-12-31T00:00:00Z"^^xsd:dateTime`;
+  const qids = [...new Set(regions.filter((r) => r.wikidata && r.owner === r.id).map((r) => r.wikidata))];
+  const byQ = new Map(regions.map((r) => [r.wikidata, r.owner]));
+  const sparql = async (name, q) => JSON.parse(await cached(name, 'https://query.wikidata.org/sparql', { method: 'POST', body: 'query=' + encodeURIComponent(q), headers: { Accept: 'application/sparql-results+json', 'Content-Type': 'application/x-www-form-urlencoded' } })).results.bindings;
+  const rows = [];
+  for (const [role, prop] of [['hog', 'P6'], ['hos', 'P35']]) for (let k = 0; k < qids.length; k += 40) {
+    const res = await sparql(`wd_party_${REF_YEAR}_${role}_${k}.json`, `SELECT ?c ?party ?partyLabel WHERE { VALUES ?c { ${qids.slice(k, k + 40).map((x) => 'wd:' + x).join(' ')} }
+      ?c p:${prop} ?s . ?s ps:${prop} ?p . OPTIONAL { ?s pq:P580 ?s0 } OPTIONAL { ?s pq:P582 ?s1 }
+      FILTER((!BOUND(?s0) || ?s0 <= ${at}) && (!BOUND(?s1) || ?s1 > ${at}))
+      ?p p:P102 ?m . ?m ps:P102 ?party . OPTIONAL { ?m pq:P580 ?m0 } OPTIONAL { ?m pq:P582 ?m1 }
+      FILTER((!BOUND(?m0) || ?m0 <= ${at}) && (!BOUND(?m1) || ?m1 > ${at}))
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }`);
+    for (const x of res) rows.push({ id: byQ.get(x.c.value.split('/').pop()), role, party: x.party.value.split('/').pop(), name: x.partyLabel.value });
+  }
+  const parties = [...new Set(rows.map((r) => r.party))], align = {};
+  for (let k = 0; k < parties.length; k += 80) {
+    const res = await sparql(`wd_party_${REF_YEAR}_align_${k}.json`, `SELECT ?party ?aLabel WHERE { VALUES ?party { ${parties.slice(k, k + 80).map((x) => 'wd:' + x).join(' ')} } ?party wdt:P1387 ?a . SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }`);
+    for (const x of res) if (x.aLabel) (align[x.party.value.split('/').pop()] ??= []).push(x.aLabel.value.toLowerCase());
+  }
+  const out = {};
+  for (const c of countries) {
+    const mine = rows.filter((r) => r.id === c.id && !/independent politician|military dictatorship|nonpartisan/i.test(r.name));
+    if (!mine.length) continue;
+    const pres = ['presidential', 'semi_presidential', 'one_party', 'military'].includes(c.government.form);
+    const order = pres ? ['hos', 'hog'] : ['hog', 'hos'];
+    const cand = mine.filter((r) => r.role === order[0]).length ? mine.filter((r) => r.role === order[0]) : mine;
+    const both = cand.find((r) => mine.some((o) => o.role !== r.role && o.party === r.party));
+    const pick = both ?? cand.find((r) => align[r.party]) ?? cand[0];
+    const labels = align[pick.party] ?? [];
+    const pos = labels.map((l) => ALIGN_POS.find(([re]) => re.test(l))?.[1]).filter((v) => v !== undefined);
+    let p = pos.length ? pos.reduce((a, b) => a + b, 0) / pos.length : /communist|workers'|socialist/i.test(pick.name) ? -0.7 : null;
+    let family = p === null ? null : p <= -0.7 ? 0 : p <= -0.2 ? 1 : p < 0.15 ? 3 : p < 0.45 ? 4 : p < 0.75 ? 5 : 6;
+    if (/islam|christian democra|hindu|buddhist/i.test(pick.name)) { family = 7; p ??= 0.5; }
+    if (family === null) continue;
+    out[c.id] = { name: pick.name, family, pos: +p.toFixed(2), s: 'WD' };
+  }
+  return out;
 }
 
 // --- UN General Assembly ideal points (foreign-policy position) ----------------------------
@@ -788,6 +872,11 @@ async function main() {
   const al = await alliances(countries);
   const grievances = await conflictHistory(countries);
   const conflict = await conflicts(countries);
+  const orgs = organisations(countries);
+  const ruling = await rulingParties(regions, countries);
+  for (const c of countries) c.rulingParty = ruling[c.id] ?? null;
+  console.log('ruling parties', Object.keys(ruling).length, ['IND', 'DEU', 'USA', 'GBR', 'TUR', 'CHN'].map((id) => `${id}:${ruling[id]?.name}/${ruling[id]?.family}`).join(' '));
+  console.log('organisations', orgs.map((o) => `${o.id}:${o.members.length}${o.members.some((m) => m.suspended) ? '(' + o.members.filter((m) => m.suspended).length + ' suspended)' : ''}`).join(' '));
   console.log('conflict', JSON.stringify({ ...conflict, active: conflict.active.length }), conflict.active.map((x) => `${x.kind[0]}:${x.loc}${x.kind === 'interstate' ? '<' + x.a : ''}:${x.deaths}`).join(' '));
   console.log('grievances', grievances.length, 'pairs; top', grievances.sort((x, y) => y.g - x.g).slice(0, 8).map((x) => `${x.a}-${x.b} ${x.g}`).join(', '));
   const ids = new Set(countries.map((c) => c.id));
@@ -826,7 +915,7 @@ async function main() {
       indicators: Object.fromEntries(Object.entries(allFields).map(([k, [s, code, agg]]) => [k, { source: s, code, agg }])),
       curves, coverage, baseRates: { ...vd.baseRates, alliances: al.rates }, secularisation,
       diplomacy: { treaties: al.treaties, atopYear: al.atopYear, allianceUpdates: al.notes, sanctions, sanctionsAsOf: sanctionYear, foreignPolicy, grievances },
-      conflict,
+      conflict, organisations: orgs,
       religions: RELIGIONS.map(([, label, family]) => ({ label, family })),
     },
     countries: countries.map(({ members, ...c }) => c),

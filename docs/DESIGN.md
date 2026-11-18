@@ -19,9 +19,9 @@ Sections marked **[implemented]** describe running code; **[design]** describes 
 | Chronicle/news events carrying their causal inputs | implemented |
 | Observer UI: light, plain-language atlas of provinces with country names, animated news ripples, pulsing conflicts, marching front lines, occupied and rebel-held hatching; 29 map modes (8 featured), history bar with rewind, tabbed country view, world summary, news with explanations | implemented |
 | Religion: 31 denominations/sects per country, secularisation, fractionalisation and polarisation | implemented (Phase 3, see §3.3) |
-| Domestic politics: democracy index and regime, approval, legitimacy, unrest, elections, coups, uprisings, regime change | implemented, aggregate level (Phase 3, see §3.4); political actors/factions still design |
-| Diplomacy: relations (trust, grievance, threat), defence treaties, sanctions, crises, friend-shoring, "why" inspector | implemented (Phase 3b, see §3.5); international organisations other than defence treaties still design |
-| Armed conflict: civil and interstate wars, fighting, casualties, refugees, war damage, allies, military aid, nuclear deterrence, endings, territorial change by province | implemented (Phase 4, see §3.6); new states from secession still design |
+| Domestic politics: democracy index and regime, approval, legitimacy, unrest, elections, coups, uprisings, regime change; parties (eight families, real ruling party at the start), coalitions, military and council rule | implemented (Phase 3, see §3.4); business, regional and religious elites as separate actors still design |
+| Diplomacy: relations (trust, grievance, threat), defence treaties, sanctions, crises, friend-shoring, "why" inspector; international organisations (EU, AU, ECOWAS, ASEAN, Mercosur, OPEC, OECD, BRICS, SCO) with accession, exit, suspension | implemented (Phase 3b-c, see §3.5) |
+| Armed conflict: civil and interstate wars, fighting, casualties, refugees, war damage, allies, military aid, nuclear deterrence, endings, territorial change by province, rebel-held territory, new states from secession | implemented (Phase 4, see §3.6) |
 | Technology, environment, culture/ideology | design only (Phase 5) |
 
 Regime, democracy, approval, legitimacy, unrest, religion, relations, alliances and sanctions now evolve in the
@@ -240,9 +240,28 @@ diffusion models miss. The coup hazard saturates because an exponential version 
 Central African Republic had 117 coups in 50 simulated years); coups now concentrate where they occur in reality
 (Sahel, Central Africa) and become rarer as countries grow richer.
 
-**Still design (Phase 3b):** explicit political actors (executive, legislature blocs, military, business, regional and
-religious elites, opposition) with ideal points, veto players and bounded-rational policy choice; party systems;
-the "why did X do Y" inspector. The aggregate model above is the substrate they will replace.
+**Parties and governments** (`systems/parties.ts`). The party of the head of government (head of state in
+presidential systems) at the end of the reference year comes from Wikidata (office holder and party membership valid
+on 31 December, political alignment P1387; 116 countries for 2023, 72 for 2000); its alignment sets the government's
+left-right orientation and its party family. All other parties are **simulated**, eight families with left-right
+positions (Left −0.8, Social Democrats −0.45, Greens −0.35, Liberals 0.05, Centre-Right 0.3, Conservatives 0.55,
+Nationalists 0.85, a religious party 0.6 named after the dominant religion); no open dataset covers party systems
+worldwide (ParlGov: ~40 countries), and the interface says so.
+```
+start      vote shares from income (social democrats, liberals, greens), religiosity (conservatives, the religious
+           party), polarisation and poverty (nationalists, left), + 0.18 for the governing family (0.35 in electoral
+           and closed autocracies), × lognormal(0.25)
+election   the calibrated model above decides whether the government survives; then governing families × e^0.05 (won)
+           or × e^−0.4 (lost); nationalists × e^(0.04·Δhardship + 1.0·Δpolarisation + 0.6·Δunrest), left × e^(0.02·Δhardship),
+           greens × e^(0.5·(income − 0.8)); noise sd 0.12. Seats: proportional with a 5% threshold (parliamentary,
+           semi-presidential, constitutional monarchy) or the cube law (others). Government: the incumbent family (if
+           it won) or the largest opposition family, plus the nearest families until a majority (at most four
+           parties); orientation = seat-weighted position, which drives fiscal policy as before.
+takeover   coups install military rule, overthrows and autocratic rebel victories a ruling council: no party governs
+           until elections return
+```
+The real party's name is shown while it governs; it loses it at its first defeat. **Still design:** business, regional
+and religious elites as separate veto players with their own preferences.
 
 ### 3.5 Diplomacy [implemented, Phase 3b]
 
@@ -282,7 +301,30 @@ from 0.46 to 0.59 in 150 years and the sanctions stock falls from ~200 to ~50 di
 why the trigger and size rules exist: rich states sanctioned random small countries, and Malawi "lifted its
 sanctions" on North Korea when UN sanctions were modelled as 199 bilateral ones.
 
-### 3.6 Armed conflict [implemented, Phase 4 part 1]
+**International organisations** (`systems/organisations.ts`, Phase 3c). Membership at the reference year is curated
+from the organisations' membership pages, with joining (and leaving) years so the 2000 baseline is right too: EU
+(27 in 2023), African Union (55; 6 suspended after coups), ECOWAS (15; 4 suspended), ASEAN, Mercosur (Venezuela
+suspended), OPEC, OECD, BRICS (5), SCO (9). Status per country and organisation: none, member, suspended, former.
+```
+effects    relative to the start: trust + w per organisation two countries newly share (EU 0.3, BRICS 0.2, others
+           0.1-0.15; a trust driver shown in the inspector), trade × e^w between members of a trade bloc (EU 0.5,
+           Mercosur 0.3, ASEAN 0.2, ECOWAS 0.15) — so joining or leaving moves trust and trade, and 2023 is reproduced
+suspend    AU and ECOWAS after a coup, an overthrow or an autocratic rebel victory in the past year; EU, Mercosur and
+           OECD when democracy falls below half their threshold; readmission 50%/yr once elections are back; suspended
+           ECOWAS members walk out at 25%/yr (Mali, Burkina Faso, Niger announced it in January 2024)
+join       yearly hazard for eligible countries, at most one accession per organisation a year (the AU admits all):
+           EU (European, democracy > 0.65, income $15k to 1.2 × the members' median, trust > 0.3, 1M+ people),
+           OECD (democracy > 0.6, income > $25k, 1M+), ASEAN (Southeast Asia), Mercosur (South America), ECOWAS (West
+           Africa, elections), AU (African and not unrecognised), OPEC (oil-income weight > 0.08), BRICS (30M+ people,
+           close to China, not close to the US, not OECD), SCO (Asian, close to China and Russia); BRICS, SCO and ASEAN
+           admit only fully recognised states; former members rejoin at a tenth of the rate
+leave      0.1%/yr × e^(2.5·(0.3 − mean trust in the members)); OPEC members whose oil income fades
+```
+In 4 × 30 simulated years: EU accessions ≈ 0.07/yr (Moldova, North Macedonia, Albania, Kosovo), OECD ≈ 0.18/yr
+(Romania, Croatia, Bulgaria, Argentina, Indonesia, Peru: the current applicants), BRICS ≈ 0.3/yr (Saudi Arabia,
+Egypt, Iran, Algeria, Indonesia...), the Sahel juntas leave ECOWAS. Rates are assumptions of the observed order.
+
+### 3.6 Armed conflict [implemented, Phase 4]
 
 Unit: an armed conflict in UCDP's sense (organised violence with at least 25 battle deaths a year), either **civil**
 (a government against rebels, at most one per country; foreign states may fight for the government or back the
@@ -364,11 +406,22 @@ fade; this is the model's mechanism, not a target. Extrapolated for centuries it
 conflict (around 2400 in a typical run), because income strongly lowers the civil-conflict hazard and incomes keep
 growing; whether conflict risk should depend on absolute or relative income is a question for Phase 6 calibration. The test suite checks these rates on 4 worlds × 20 years.
 
+**New states.** Rebels who win a war over territory found a state with probability 0.4 (otherwise self-rule): the
+provinces they hold (separatists hold at most 20% of the population and never the most populous province), their share
+of the people, capital and output, half the rebels' share of the military, no debt, a new government (democratic with
+probability 0.3), hostile relations with the old state (trust −0.6, grievance 2). It is named after the disputed
+territory UCDP records (Kurdistan, Balochistan, Ambazonia...) or the rebels' heartland province. The engine grows by
+one country in place (`systems/secession.ts`): the baseline copy, the trade network (the new state trades with its
+parent's partners; others append it, so pair indices stay valid), the diplomatic pairs, the conflict geography, every
+per-country array and the history (NaN before independence); saves record each new state and rebuild it on load.
+In 6 worlds × 60 years: 11 new states (Kurdistan from Turkey, Duhok from Iraq, Al Mahrah from Yemen...), fewer than
+the ~1 per decade since 1990. Rebel-held territory adds to the rebels' strength (× 1 + 1.5 × share held) and costs the
+state output (0.1 × share a year on the cycle) and legitimacy.
+
 **Limitations.** Province populations are fixed weights from the start (people moved with a province are the
-province's share of the country's population at the time); land contiguity between countries is not updated after
-annexations; secession creates no new state (rebels win "self-rule"); one civil conflict per country stands for all of
-UCDP's dyads there; rebel-held territory does not yet change the fighting or the economy; non-state and one-sided violence (UCDP's other datasets) are
-not modelled. Distant wars need a major military and a quarrel; a simulated diplomatic crisis can still create one
+province's share of the country's population at the time); land contiguity between existing countries is not updated
+after annexations; one civil conflict per country stands for all of UCDP's dyads there; non-state and one-sided
+violence (UCDP's other datasets) are not modelled. Distant wars need a major military and a quarrel; a simulated diplomatic crisis can still create one
 with no historical analogue (about one in 100 interstate wars).
 
 ### 3.7 Technology, environment, society [design, Phase 5]
@@ -490,9 +543,10 @@ licence compatibility to check), terrain/elevation rasters (Natural Earth / ETOP
 | 1 ✅ | Baseline data pipeline, engine core, demography & economy prototypes, save/load/rewind/branch, map UI | invariants + reproducibility tests green; UI drives the worker |
 | 2 ✅ | Single-year age × sex cohorts; Siler life tables; sectors; oil price; inflation; procyclical investment; gravity trade network; 2000 baseline and backtest | backtest 2000→2023 reported per region with naive benchmarks and sensitivity (`docs/BACKTEST.md`). Deferred: resource reserves and depletion, exchange rates, bilateral trade data |
 | 3 (part) ✅ | Religion (31 denominations, secularisation, polarisation); aggregate domestic politics: democracy, regimes, approval, legitimacy, unrest, elections, coups, uprisings | coup and regime-transition rates vs. Powell & Thyne and V-Dem 2001-2023 (§3.4); democracy in the backtest |
-| 3b ✅ | Diplomacy: relations graph, ATOP defence treaties, sanctions (curated 2023 programmes, UN regimes), crises, friend-shoring; trust inspector | alliance and crisis rates vs. ATOP / ICB (§3.5). Deferred: explicit political actors and veto players, party systems, international organisations beyond defence treaties |
+| 3b ✅ | Diplomacy: relations graph, ATOP defence treaties, sanctions (curated 2023 programmes, UN regimes), crises, friend-shoring; trust inspector | alliance and crisis rates vs. ATOP / ICB (§3.5) |
+| 3c ✅ | Parties (real ruling party from Wikidata, simulated party families, seats, coalitions), military and council rule; international organisations with accession, exit and suspension | consistency tests; organisation rates of the observed order (§3.4, §3.5). Deferred: elites as separate veto players |
 | 4 ✅ | Civil and interstate conflict from UCDP 2023, onset, fighting, casualties, refugees, war damage, allies, military aid, nuclear deterrence, endings; provinces (Natural Earth admin-1, Wikidata populations) as the map and the unit of occupation and annexation | onset, duration and battle-death distributions vs. UCDP 1990-2023 across seeds (§3.6) |
-| 4c | Secession creating new states (needs a variable number of countries), rebel-held territory, maritime reach | — |
+| 4c ✅ | New states from secession (variable number of countries), rebel-held territory with effects | exact save/load and replay with new states; conservation tests |
 | 5 | Technology domains & diffusion; environment & disasters; migration push/pull; ideology & society | sensitivity analysis of long-run outcomes |
 | 6 | Calibration (simulated method of moments over many seeds), pathology hunting, profiling-driven optimisation; Rust/WASM core if profiling justifies | 500-year runs without degenerate outcomes; ensemble statistics |
 | 7 | Rich country histories, timeline replay scrubber, scenario comparison across branches, narrative generation | — |

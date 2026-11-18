@@ -22,6 +22,18 @@ import type { Params } from '../params';
 import type { Rng } from '../rng';
 import type { WorldState, SimEvent, Treaty } from '../state';
 import { contiguity, worldGdp, exportShare, type TradeNet } from './trade';
+import { sharedOrgs } from './organisations';
+
+// per-organisation weights in baseline order (cached per organisation list)
+let orgW: { key: string; trust: number[]; trade: number[] } | null = null;
+function orgWeights(st: WorldState, p: Params) {
+  const ids = st.orgIds ?? [];
+  const key = ids.join();
+  if (!orgW || orgW.key !== key) orgW = { key, trust: ids.map((id) => p.organisations.trust[id] ?? 0), trade: ids.map((id) => p.organisations.trade[id] ?? 0) };
+  return orgW;
+}
+const orgTrust = (st: WorldState, p: Params) => orgWeights(st, p).trust;
+const orgTrade = (st: WorldState, p: Params) => orgWeights(st, p).trade;
 
 const logistic = (x: number) => 1 / (1 + Math.exp(-x));
 
@@ -105,7 +117,7 @@ export function allyFlags(st: WorldState, net: PairNet): Uint8Array {
   return out;
 }
 
-const DRIVERS = ['foreignPolicy', 'regime', 'trade', 'alliance', 'religion', 'grievance', 'sanctions'] as const;
+const DRIVERS = ['foreignPolicy', 'regime', 'trade', 'alliance', 'religion', 'grievance', 'sanctions', 'organisations'] as const;
 const scratch = new Float64Array(DRIVERS.length);
 
 /** Trust drivers of pair q written into `out` (order of DRIVERS); returns the trust target's argument c + Σ. */
@@ -118,7 +130,8 @@ function driverValues(st: WorldState, p: Params, trade: TradeNet, net: PairNet, 
   out[4] = k.rel * (relSim(st, a, c) - 0.5);
   out[5] = -k.grievance * st.pair.grievance[q];
   out[6] = -k.sanctions * Math.max(st.pair.sancIJ[q], st.pair.sancJI[q]);
-  return k.c + out[0] + out[1] + out[2] + out[3] + out[4] + out[5] + out[6];
+  out[7] = st.nOrg ? sharedOrgs(st, orgTrust(st, p), a, c) : 0; // organisations joined or left since the start
+  return k.c + out[0] + out[1] + out[2] + out[3] + out[4] + out[5] + out[6] + out[7];
 }
 
 /** Trust drivers D for pair q as named parts (the inspector's "why"). */
@@ -170,7 +183,7 @@ export function applyTradeEffects(st: WorldState, p: Params, trade: TradeNet, ne
     const [ka, kc] = net.tradeK[q];
     if (ka < 0) continue;
     const m = (1 - p.diplomacy.sanctions.tradeCut * Math.max(st.pair.sancIJ[q], st.pair.sancJI[q], un[net.i[q]], un[net.j[q]]))
-      * Math.exp(p.diplomacy.friendShoring * (st.pair.trust[q] - st.pair.trust0[q]));
+      * Math.exp(p.diplomacy.friendShoring * (st.pair.trust[q] - st.pair.trust0[q]) + (st.nOrg ? sharedOrgs(st, orgTrade(st, p), net.i[q], net.j[q]) : 0));
     trade.mult[net.i[q]][ka] = m; trade.mult[net.j[q]][kc] = m;
   }
 }

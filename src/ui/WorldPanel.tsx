@@ -5,11 +5,12 @@ import { civilFromDays } from '../engine/calendar';
 import { LineChart } from './LineChart';
 import { WarList } from './WarList';
 import { NewsList } from './NewsList';
+import type { NewsContext } from '../engine/describe';
 import { fmtNum, fmtPct, fmtUsd } from './format';
 
-interface Props { frame: Frame; events: SimEvent[]; name: (c: number) => string; weight: (c: number) => number; onSelect: (c: number) => void }
+interface Props { frame: Frame; events: SimEvent[]; name: (c: number) => string; news: NewsContext; weight: (c: number) => number; onSelect: (c: number) => void }
 
-export function WorldPanel({ frame, events, name, weight, onSelect }: Props) {
+export function WorldPanel({ frame, events, name, news, weight, onSelect }: Props) {
   const w = frame.world, m = frame.metrics, { y } = civilFromDays(frame.day);
   const top = m.gdp.map((_, i) => i).sort((a, b) => m.gdp[b] - m.gdp[a]).slice(0, 6);
   const democracies = m.regime.filter((r) => r >= 2).length;
@@ -37,7 +38,7 @@ export function WorldPanel({ frame, events, name, weight, onSelect }: Props) {
         ))}
       </ol>
       <h3>What's happening</h3>
-      <NewsList events={events} name={name} weight={weight} onSelect={onSelect} />
+      <NewsList events={events} name={name} ctx={news} weight={weight} onSelect={onSelect} />
     </div>
   );
 }

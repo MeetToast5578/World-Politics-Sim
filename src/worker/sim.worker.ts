@@ -19,7 +19,7 @@ let sentEvents = 0;
 let resetEvents = true;
 let carry = 0; // fractional days not yet simulated
 let msPerSimYear = 0;
-let lastOwners = '', ownerVersion = 0;
+let lastOwners = '', ownerVersion = 0, sentExtra = -1;
 const TICK_MS = 50;
 
 const post = (m: FromWorker) => (self as unknown as Worker).postMessage(m);
@@ -48,7 +48,9 @@ function diplomacyDetail(c: number) {
 function metrics(): Record<string, number[]> {
   const st = sim.st, { f, n, history } = st;
   const out: Record<string, number[]> = { pop: [], gdp: [], gdpPc: [], growth: [], tfr: [], lifeExp: [], old: [], debt: [], mil: [], milexShare: [], effectiveness: [], voice: [], unemp: [], inflation: [], trade: [], agri: [], oilExp: [],
-    demo: [], regime: [], approval: [], unrest: [], coupRisk: [], relPolar: [], nonrel: [], majorRel: [], relSel: [], sanctionLoad: [], bloc: [], war: [] };
+    demo: [], regime: [], approval: [], unrest: [], coupRisk: [], relPolar: [], nonrel: [], majorRel: [], relSel: [], sanctionLoad: [], bloc: [], war: [], tradeBloc: [], ideology: [] };
+  // trade bloc: first full membership among EU, ASEAN, Mercosur, ECOWAS, AU (index into st.orgIds); −2 suspended; −1 none
+  const blocOrder = ['EU', 'ASEAN', 'MERCOSUR', 'ECOWAS', 'AU'].map((id) => st.orgIds.indexOf(id)).filter((o) => o >= 0);
   // war status: 3 fighting another country, 2 civil war (1,000+ battle deaths a year), 1 smaller armed conflict, 0 peace
   const war = new Array(n).fill(0);
   for (const w of st.wars) {
@@ -68,7 +70,7 @@ function metrics(): Record<string, number[]> {
     out.lifeExp.push(f.lifeExp[c]);
     out.old.push(f.p2[c] / P);
     out.debt.push(f.debt[c] / f.gdp[c]);
-    const noMilData = !baseline.countries[c].fields.milexShare; // shown as "no data", not as zero
+    const noMilData = !sim.baseline.countries[c].fields.milexShare; // shown as "no data", not as zero
     out.mil.push(noMilData ? NaN : f.milCap[c]);
     out.milexShare.push(noMilData ? NaN : f.milexShare[c]);
     out.effectiveness.push(f.wgiEffectiveness[c]);
@@ -88,6 +90,9 @@ function metrics(): Record<string, number[]> {
     out.sanctionLoad.push(f.sanctionLoad[c]);
     out.bloc.push(blocs.of[c]);
     out.war.push(war[c]);
+    const ms = blocOrder.map((o) => st.orgMember[c * st.nOrg + o]);
+    out.tradeBloc.push(ms.includes(1) ? blocOrder[ms.indexOf(1)] : ms.includes(2) ? -2 : -1);
+    out.ideology.push(f.govLead[c] < 0 ? NaN : f.ideology[c]); // no party government: no data
   }
   return out;
 }
@@ -117,6 +122,7 @@ function frame(): Frame {
     blocLabels: largestBlocs().labels,
     wars: st.wars.map((w) => ({ id: w.id, kind: w.kind, a: w.a, b: w.b, loc: w.loc, start: w.start, goal: w.goal, name: w.name, deaths: w.deaths, rate: w.rate, score: w.score, occ: w.occ, held: w.held })),
     ...owners(),
+    extraCountries: (() => { const k = sim.baseline.countries.length - baseline.countries.length; if (k === sentExtra && !resetEvents) return null; sentExtra = k; return sim.baseline.countries.slice(baseline.countries.length); })(),
     newEvents, resetEvents, detail: null, perf: { msPerSimYear },
   };
   sentEvents = st.events.length;
@@ -127,7 +133,8 @@ function frame(): Frame {
     for (const k of HIST_FIELDS) series[k] = Array.from({ length: H }, (_, y) => st.history.data[k][y * st.n + c]);
     const cohort = (sex: number) => Array.from(st.cohorts.subarray(cohortIndex(c, sex), cohortIndex(c, sex) + AGES));
     fr.detail = { c, fields: Object.fromEntries(FIELDS.map((k) => [k, st.f[k][c]])), history: { years: st.history.years, series }, pyramid: { f: cohort(0), m: cohort(1) },
-      religion: Array.from(st.religion.subarray(c * st.nRel, (c + 1) * st.nRel)), diplomacy: diplomacyDetail(c) };
+      religion: Array.from(st.religion.subarray(c * st.nRel, (c + 1) * st.nRel)), diplomacy: diplomacyDetail(c),
+      orgs: Array.from(st.orgMember.subarray(c * st.nOrg, (c + 1) * st.nOrg)) };
   }
   return fr;
 }
