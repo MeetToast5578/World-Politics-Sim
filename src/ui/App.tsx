@@ -4,7 +4,9 @@ import type { Baseline } from '../engine/types';
 import type { SimEvent } from '../engine/state';
 import { formatDate, civilFromDays } from '../engine/calendar';
 import type { Frame, FromWorker, ToWorker } from '../worker/protocol';
-import { MapView, type MapRegion } from './MapView';
+import { MapView, type MapRegion, type MapLabel, type Ping } from './MapView';
+import { isMajor } from './NewsList';
+import { describeEvent } from '../engine/describe';
 import { CountryPanel } from './CountryPanel';
 import { WorldPanel } from './WorldPanel';
 import { Timeline } from './Timeline';
@@ -16,6 +18,16 @@ const SPEEDS: [string, number, string][] = [
   ['Slow', 30, 'One month per second'], ['Normal', 365, 'One year per second'],
   ['Fast', 3652, 'Ten years per second'], ['Fastest', 18262, 'Fifty years per second'],
 ];
+// news ripple colours by kind: fighting red, upheaval orange, politics and diplomacy blue, peace green, economy purple
+const PING_COLORS = { war: 'rgba(192,67,47,ALPHA)', upheaval: 'rgba(214,124,40,ALPHA)', politics: 'rgba(46,109,180,ALPHA)', peace: 'rgba(59,139,90,ALPHA)', economy: 'rgba(122,91,181,ALPHA)', other: 'rgba(90,100,110,ALPHA)' };
+function pingKind(k: string): keyof typeof PING_COLORS {
+  if (/^(war_|territory_|nuclear|civil_war_started|civil_war_escalated|regime_imposed)/.test(k)) return 'war';
+  if (/^(ceasefire|peace_deal|conflict_faded|civil_war_won|autonomy_won)/.test(k)) return 'peace';
+  if (/^(coup|revolution|regime_overthrown|rebels_won|protests|government_collapse|autocratization)/.test(k)) return 'upheaval';
+  if (/^(election|democratization|elections_restored|alliance|sanctions|un_sanctions|diplomatic)/.test(k)) return 'politics';
+  if (/^(recession|sovereign|oil|inflation|gdp_rank|debt)/.test(k)) return 'economy';
+  return 'other';
+}
 const randomSeed = () => Math.floor(Math.random() * 1e9);
 const WELCOMED = 'world.welcomed';
 function readFlag(): boolean { try { return localStorage.getItem(WELCOMED) === '1'; } catch { return false; } }
@@ -40,6 +52,16 @@ export function App() {
   const pendingSave = useRef<'file' | 'quick'>('quick');
 
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
+  // ripples on the map for the major news of each frame (at most 4 at a time, one per country)
+  const nameRef = useRef<(c: number) => string>(() => '');
+  const addPings = (es: SimEvent[], pop: number[]) => {
+    const now = performance.now(), weight = (c: number) => pop[c] ?? 0;
+    for (const e of es) {
+      if (e.c < 0 || !isMajor(e, weight)) continue;
+      const h = describeEvent(e, nameRef.current).headline;
+      pings.current = [...pings.current.filter((g) => g.c !== e.c), { c: e.c, t: now, color: PING_COLORS[pingKind(e.k)], text: h.length > 48 ? h.slice(0, 46) + '…' : h }].slice(-4);
+    }
+  };
 
   useEffect(() => {
     const base = document.baseURI;
@@ -51,7 +73,7 @@ export function App() {
     w.onmessage = (ev: MessageEvent<FromWorker>) => {
       const m = ev.data;
       if (m.type === 'frame') {
-        if (m.resetEvents) { events.current = m.newEvents; setBusy(false); } else if (m.newEvents.length) events.current = events.current.concat(m.newEvents);
+        if (m.resetEvents) { events.current = m.newEvents; setBusy(false); pings.current = []; } else if (m.newEvents.length) { events.current = events.current.concat(m.newEvents); addPings(m.newEvents, m.metrics.pop); }
         setFrame(m);
       } else if (m.type === 'saved') {
         if (pendingSave.current === 'file') { const s = JSON.parse(m.json); downloadText(`world-${formatDate(s.day)}-seed${s.seed}.json`, m.json); setMessage('Save file downloaded.'); }
@@ -65,6 +87,7 @@ export function App() {
   useEffect(() => { if (!message) return; const t = setTimeout(() => setMessage(null), 6000); return () => clearTimeout(t); }, [message]);
 
   const name = useCallback((c: number) => baseline?.countries[c]?.name ?? '?', [baseline]);
+  nameRef.current = name;
   // provinces with their current owners (the worker sends owners only when they change)
   const owners = useRef<number[]>([]);
   if (frame?.provinceOwner) owners.current = frame.provinceOwner;
@@ -74,8 +97,35 @@ export function App() {
     return baseline.provinces.map((p, i) => ({ id: p.id, name: p.name, owner: owners.current[i] ?? -1 }));
   }, [baseline, ownerVersion]);
   const heldKey = frame ? frame.wars.map((w) => w.held.join('.')).join('|') : '';
-  const hatched = useMemo(() => new Set(frame ? frame.wars.flatMap((w) => w.held) : []), [heldKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  const occupier = useMemo(() => { const m = new Map<number, number>(); for (const w of frame?.wars ?? []) for (const i of w.held) m.set(i, w.a[0]); return m; }, [heldKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const held = useMemo(() => {
+    const occupied = new Set<number>(), rebel = new Set<number>(), by = new Map<number, number>(); // province -> occupier (−1: rebels)
+    for (const w of frame?.wars ?? []) for (const i of w.held) { (w.kind === 'civil' ? rebel : occupied).add(i); by.set(i, w.kind === 'civil' ? -1 : w.a[0]); }
+    return { occupied, rebel, by };
+  }, [heldKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // front lines are recomputed at most twice a second (a mesh of the whole map)
+  const [frontKey, setFrontKey] = useState('');
+  const frontAt = useRef(0);
+  useEffect(() => {
+    const wait = Math.max(0, 500 - (performance.now() - frontAt.current));
+    const t = setTimeout(() => { frontAt.current = performance.now(); setFrontKey(heldKey); }, wait);
+    return () => clearTimeout(t);
+  }, [heldKey]);
+  // where each country's name, war glow and news go: the province nearest the area-weighted centre of its home region
+  const labels = useMemo<MapLabel[]>(() => {
+    if (!baseline) return [];
+    const P = baseline.provinces;
+    return baseline.countries.map((c, k) => {
+      let ids = P.map((_, i) => i).filter((i) => P[i].region === c.id);
+      if (!ids.length) ids = P.map((_, i) => i).filter((i) => c.regions.includes(P[i].region));
+      let A = 0, x = 0, y = 0;
+      for (const i of ids) { const a = Math.max(1, P[i].areaKm2); A += a; x += a * P[i].centroid[0]; y += a * P[i].centroid[1]; }
+      x /= A; y /= A;
+      let best = ids[0], d = Infinity;
+      for (const i of ids) { const dd = (P[i].centroid[0] - x) ** 2 + (P[i].centroid[1] - y) ** 2; if (dd < d) { d = dd; best = i; } }
+      return { c: k, name: c.name, lon: P[best].centroid[0], lat: P[best].centroid[1], pop: c.fields.pop?.v ?? 0 };
+    }).sort((a, b) => b.pop - a.pop);
+  }, [baseline]);
+  const pings = useRef<Ping[]>([]);
 
   const mode = MAP_MODES.find((m) => m.id === modeId)!;
   const modeActive = !mode.needsSelection || selected !== null;
@@ -166,12 +216,12 @@ export function App() {
             </select>
           </nav>
           <div className="map-area">
-            <MapView topo={topo} regions={regions} fillFor={fillFor} hatched={hatched} selected={selected} onSelect={setSelected} onHover={onHover} version={frame.day + modeId.length + (selected ?? -1)} />
+            <MapView topo={topo} regions={regions} fillFor={fillFor} occupied={held.occupied} rebel={held.rebel} labels={labels} wars={frame.wars} frontKey={frontKey} pings={pings} selected={selected} onSelect={setSelected} onHover={onHover} version={frame.day + modeId.length + (selected ?? -1)} />
             {hover && (
               <div className="tip" style={{ left: hover.x + 14, top: hover.y + 14 }} role="presentation">
                 <b>{hover.r.owner >= 0 ? name(hover.r.owner) : hover.r.name}</b>
                 {hover.r.owner >= 0 && hover.r.name !== name(hover.r.owner) && <span className="fine">{hover.r.name}</span>}
-                {occupier.has(hover.i) && <span>Occupied by {name(occupier.get(hover.i)!)}</span>}
+                {held.by.has(hover.i) && <span>{held.by.get(hover.i)! < 0 ? 'Held by rebels' : `Occupied by ${name(held.by.get(hover.i)!)}`}</span>}
                 {hoverText && <span>{hoverText}</span>}
               </div>
             )}
@@ -194,6 +244,13 @@ export function App() {
           </div>
           <div className="legend">
             {modeActive ? <p>{mode.about}</p> : <p>Choose a country on the map to see how everyone else feels about it.</p>}
+            <ul className="map-key" aria-label="Map symbols">
+              <li><i className="k-dot" />Fighting (pulses in a war)</li>
+              <li><i className="k-front" />Front line</li>
+              <li><i className="k-occ" />Occupied</li>
+              <li><i className="k-reb" />Held by rebels</li>
+              <li><i className="k-ping" />News as it happens</li>
+            </ul>
             {scale && modeActive && mode.fmt && (
               <div className="ramp">
                 <span>{mode.low ?? mode.fmt(scale.lo)}</span>

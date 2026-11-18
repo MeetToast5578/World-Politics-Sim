@@ -17,7 +17,7 @@ interface Props {
 }
 
 /** Major news: world-changing events anywhere, important events in sizeable countries. */
-function isMajor(e: SimEvent, weight: (c: number) => number): boolean {
+export function isMajor(e: SimEvent, weight: (c: number) => number): boolean {
   const imp = IMPORTANCE[e.k] ?? 1;
   const size = Math.max(e.c >= 0 ? weight(e.c) : 1e9, e.o !== undefined && e.o >= 0 ? weight(e.o) : 0);
   return imp >= 3 || (imp === 2 && size >= 15e6) || (imp === 1 && size >= 150e6);

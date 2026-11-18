@@ -227,7 +227,7 @@ function updateHeld(st: WorldState, net: ConflictNet, w: War): void {
   let W = 0;
   for (let i = 0; i < own.length; i++) if (own[i] === loc) W += net.provW[i];
   if (W <= 0) { w.held.length = 0; return; }
-  const held = new Set(w.held), side = new Set(w.a);
+  const held = new Set(w.held), side = new Set(w.kind === 'interstate' ? w.a : []); // rebels have no territory outside
   let share = w.held.reduce((s, i) => s + net.provW[i], 0) / W;
   while (w.held.length && share - w.occ > net.provW[w.held[w.held.length - 1]] / W / 2) { const i = w.held.pop()!; held.delete(i); share -= net.provW[i] / W; }
   for (let guard = 0; guard < 400; guard++) {
@@ -238,6 +238,7 @@ function updateHeld(st: WorldState, net: ConflictNet, w: War): void {
       for (const j of net.provNb[i]) if (held.has(j) || side.has(own[j])) sc++;
       if (sc > bestScore) { best = i; bestScore = sc; }
     }
+    if (best < 0 && w.kind === 'civil') best = rebelSeed(st, net, w, held);
     if (best < 0) { // no land front (across the sea): the province nearest the attacker's territory
       let d = Infinity;
       const ac = net.provC.filter((_, i) => side.has(own[i]));
@@ -249,6 +250,21 @@ function updateHeld(st: WorldState, net: ConflictNet, w: War): void {
     if (best < 0 || w.occ - share <= net.provW[best] / W / 2) break;
     w.held.push(best); held.add(best); share += net.provW[best] / W;
   }
+}
+
+/** Where a rebellion takes hold: the province farthest from the country's most populous one (the periphery). */
+function rebelSeed(st: WorldState, net: ConflictNet, w: War, held: Set<number>): number {
+  const own = st.provinceOwner;
+  let core = -1, best = -1, d = -1;
+  for (let i = 0; i < own.length; i++) if (own[i] === w.loc && (core < 0 || net.provW[i] > net.provW[core])) core = i;
+  if (core < 0) return -1;
+  const [lo0, la0] = net.provC[core], k = Math.cos((la0 * Math.PI) / 180);
+  for (let i = 0; i < own.length; i++) {
+    if (own[i] !== w.loc || held.has(i) || i === core) continue;
+    const dd = ((net.provC[i][0] - lo0) * k) ** 2 + (net.provC[i][1] - la0) ** 2;
+    if (dd > d) { d = dd; best = i; }
+  }
+  return best;
 }
 
 /** Territory changes hands: a share of the population, capital and output moves from `from` to `to`.
@@ -366,6 +382,12 @@ export function conflictMonthly(st: WorldState, p: Params, rng: Rng, net: Confli
     const md = w.rate * MONTH;
     w.deaths += md;
     if (w.kind === 'interstate') { w.occ = clamp(w.occ + P.fight.occSpeed * w.score * MONTH, 0, P.fight.maxOccupation); updateHeld(st, net, w); }
+    else {
+      // rebel-held territory: grows with the rebels' fortunes and the war's intensity, relaxes over ~6 months
+      const target = w.peak < 1000 ? 0 : P.fight.rebelTerritory / (1 + Math.exp(3 * w.score)) * Math.sqrt(Math.min(1, w.rate / 1000)); // insurgencies below civil-war scale hold no territory
+      w.occ += (target - w.occ) * (1 - Math.exp(-MONTH / 0.5));
+      updateHeld(st, net, w);
+    }
     // casualties: in civil wars all on the territory; in interstate wars split by the other side's strength
     if (w.kind === 'civil') kill(st, w.loc, md, true);
     else {
