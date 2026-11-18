@@ -24,27 +24,32 @@ import { initPolitics, politicsQuarterly } from './systems/politics';
 import { buildPairs, initDiplomacy, diplomacyYearly, applyTradeEffects, baselineSanction, type PairNet } from './systems/diplomacy';
 import { PAIR_FIELDS, type PairField } from './state';
 import { chronicleQuarterly, chronicleYearly } from './systems/chronicle';
-import { buildConflictNet, initConflict, conflictMonthly, conflictYearly, type ConflictNet } from './systems/conflict';
+import { buildConflictNet, initConflict, conflictMonthly, conflictYearly, transferTerritory, type ConflictNet, type SecessionRequest } from './systems/conflict';
+import { extendBaseline, extendTrade, extendPairs, growState, type NewState } from './systems/secession';
+import { aggregate } from './systems/demography';
 
 export const RNG_STREAMS = ['economy', 'commodity', 'politics', 'diplomacy', 'conflict'] as const;
 
 export interface SimConfig { seed: number; startDate?: string; params?: Partial<Params> }
 
 export class Simulation {
-  readonly baseline: Baseline;
+  /** the data the world started from (rewind replays from it) */
+  readonly baseline0: Baseline;
+  /** the start data plus countries born during the run (structures below grow with it) */
+  baseline: Baseline;
   readonly params: Params;
   readonly startDate?: string;
   st: WorldState;
   /** Gravity trade network: derived from the baseline only, so it is rebuilt identically on load and replay. */
-  readonly trade: TradeNet;
+  trade: TradeNet;
   /** Diplomatic pair list: derived from the baseline only (like the trade network). */
-  readonly pairs: PairNet;
+  pairs: PairNet;
   /** Distances, land borders and nuclear states for the conflict system (baseline only). */
-  readonly cnet: ConflictNet;
+  cnet: ConflictNet;
   private rngs: Record<string, Rng> = {};
 
   constructor(baseline: Baseline, cfg: SimConfig) {
-    this.baseline = baseline;
+    this.baseline = this.baseline0 = baseline;
     this.params = { ...DEFAULT_PARAMS, ...cfg.params };
     this.startDate = cfg.startDate;
     this.st = createState(baseline, cfg.seed, cfg.startDate);
@@ -92,7 +97,7 @@ export class Simulation {
   private boundary(day: number) {
     const { m } = civilFromDays(day);
     const st = this.st, p = this.params;
-    conflictMonthly(st, p, this.rngs.conflict, this.cnet, this.pairs);
+    for (const r of conflictMonthly(st, p, this.rngs.conflict, this.cnet, this.pairs)) this.secede(r);
     if ((m - 1) % 3 === 0) {
       economyQuarterly(st, p, this.rngs.economy, this.rngs.commodity, this.trade, (c, x) => st.events.push({ d: st.day, k: 'sovereign_default', c, v: x.debtRatio, x }));
       politicsQuarterly(st, p, this.rngs.politics, this.trade);
@@ -124,6 +129,47 @@ export class Simulation {
     push('old', (c) => f.p2[c] / totalPop(this.st, c));
   }
 
+  /** Grow the structures derived from the baseline (trade, pairs, conflict geography) by a new state.
+   *  Used when a state is born and, from the recorded NewState, when a save is loaded. Returns the pairs added. */
+  extendStructure(ns: NewState): number {
+    const parent = this.baseline.countries.findIndex((c) => c.id === ns.parent), c = this.baseline.countries.length;
+    this.baseline = extendBaseline(this.baseline, ns);
+    extendTrade(this.trade, this.baseline, this.params, parent, c);
+    const added = extendPairs(this.pairs, this.baseline, this.trade, c + 1, parent, c);
+    this.cnet = buildConflictNet(this.baseline);
+    return added;
+  }
+
+  /** Rebels who won their territory found a state: its provinces, their share of the people, capital and output,
+   *  a new government (democratic with probability secession.democratic), no debt, a small army. */
+  private secede(r: SecessionRequest) {
+    const st = this.st, b = this.baseline, parent = r.parent, c = st.n, f = st.f;
+    // named after the disputed territory (UCDP) or the rebels' heartland, the first province they took
+    const core = (r.territory ?? b.provinces[r.provinces[0]].name).split(' and ')[0]
+      .replace(/\s+(Autonomous Okrug|Autonomous Region|Autonomous Oblast|Krai|State|Province|Region|Oblast|Governorate|District|Department|Prefecture|Division|County)$/i, '');
+    let name = /^(North|South|East|West|Central|Coast|Northern|Southern|Eastern|Western|Upper|Lower|Highlands?|Islands?)\b/i.test(core) ? `${core} Republic` : `Republic of ${core}`;
+    if (b.countries.some((x) => x.name === name || x.name === core)) name = `${name} (${b.countries[parent].name})`; // e.g. Palestine exists already
+    const taken = new Set(r.provinces), neighbors = new Set<string>();
+    for (const i of r.provinces) for (const j of b.provinces[i].nb) if (!taken.has(j) && st.provinceOwner[j] >= 0) neighbors.add(st.ids[st.provinceOwner[j]]);
+    const ns: NewState = { id: `NS${st.newStates.length + 1}`, name, parent: st.ids[parent], provinces: r.provinces.slice(), neighbors: [...neighbors].sort(), day: st.day };
+    const pairs = this.extendStructure(ns);
+    growState(st, ns, parent, this.pairs, pairs);
+    // extensive quantities start at zero (the transfer below moves the parent's share); p0-p2 must be zero before it
+    for (const k of ['p0', 'p1', 'p2', 'K', 'gdp', 'gdpPrevQ', 'gdpPrevY', 'debt', 'milCap', 'births', 'deaths', 'netMig'] as const) f[k][c] = 0;
+    for (const i of r.provinces) st.provinceOwner[i] = c;
+    const moved = transferTerritory(st, parent, c, r.share);
+    aggregate(st, c);
+    // the rebel army becomes the new state's
+    f.milCap[c] = 0.5 * r.share * f.milCap[parent]; f.milCap[parent] *= 1 - r.share;
+    const democratic = r.u < this.params.conflict.outcome.secessionDemocratic;
+    f.regime[c] = democratic ? 2 : 0; f.demo[c] = f.demo0[c] = democratic ? Math.max(0.5, f.demo[parent]) : Math.min(0.3, f.demo[parent]);
+    f.legit[c] = f.legit0[c] = 0.45; f.unrest[c] = f.unrest0[c] = 0.35; f.approval[c] = 0.65; f.perf[c] = 0.5;
+    f.govYears[c] = 0; f.govTerms[c] = 0; f.coupMem[c] = 0.5; f.warMem[c] = 1; f.warLoad[c] = f.warLoad0[c] = 0;
+    f.nextElection[c] = democratic ? st.day + 365 : -1; f.debtRatio0[c] = 0; f.unSanction[c] = 0; f.sanctionLoad[c] = 0;
+    st.newStates.push(ns);
+    st.events.push({ d: st.day, k: 'independence', c, o: parent, v: moved, x: { share: r.share, provinces: r.provinces.length, democratic: democratic ? 1 : 0 } });
+  }
+
   /** Start an alternative timeline from now: all random streams are reseeded. Recorded so replay reproduces it. */
   branch(seed: number) {
     this.st.branches.push({ day: this.st.day, seed: seed >>> 0 });
@@ -133,11 +179,12 @@ export class Simulation {
   /** Rebuild the world at `day` by deterministic replay from t0 (honouring branch points up to that day). */
   rewindTo(day: number): void {
     const branches = this.st.branches.filter((b) => b.day <= day);
-    const fresh = new Simulation(this.baseline, { seed: this.st.seed, startDate: this.startDate, params: this.params });
+    const fresh = new Simulation(this.baseline0, { seed: this.st.seed, startDate: this.startDate, params: this.params });
     for (const b of branches) { fresh.advanceTo(b.day); fresh.branch(b.seed); }
     fresh.advanceTo(Math.max(day, fresh.st.startDay));
     this.st = fresh.st;
     this.rngs = fresh.rngs;
+    this.baseline = fresh.baseline; this.trade = fresh.trade; this.pairs = fresh.pairs; this.cnet = fresh.cnet;
   }
 
   /** Replace state (after load). */

@@ -100,6 +100,8 @@ export function describeEvent(e: SimEvent, name: (c: number) => string): Story {
       return s(`${c} annexes territory from ${o}`, `It keeps the ${x.provinces > 1 ? `${x.provinces} provinces` : 'province'} its army holds, home to ${people(e.v!)} people (${pct(x.share)} of ${o}'s population).`);
     case 'regime_imposed':
       return s(`${c} installs a new government in ${o}`, `After defeating ${o}'s army.`);
+    case 'independence':
+      return s(`${c} declares independence from ${o}`, `Rebels won their war for ${x.provinces > 1 ? `${x.provinces} provinces` : 'their province'}, home to ${people(e.v!)} people. The new state ${x.democratic ? 'promises elections' : 'is ruled by its former rebel commanders'}.`);
     case 'nuclear_strike':
       return s(`${c} uses nuclear weapons against ${o}`, `An estimated ${deaths(e.v!)} people are killed. ${c} was facing ${x.occ > 0.2 ? `the occupation of ${pct(x.occ)} of its territory` : 'defeat'}. Markets crash and fear spreads around the world.`);
     default:
@@ -113,7 +115,7 @@ export const eventText = (e: SimEvent, name: (c: number) => string) => { const t
 /** How newsworthy an event is: 3 = world-changing, 2 = major, 1 = routine. Scaled by the countries' size in the UI. */
 export const IMPORTANCE: Record<string, number> = {
   oil_shock: 3, war_started: 3, war_joined: 3, war_won: 3, ceasefire: 3, territory_annexed: 3, regime_imposed: 3, nuclear_strike: 3,
-  rebels_won: 3, civil_war_escalated: 3, coup: 3, revolution: 3, regime_overthrown: 3, sovereign_default: 3, alliance_joined: 3, alliance_left: 3, alliance_formed: 3,
+  rebels_won: 3, civil_war_escalated: 3, independence: 3, coup: 3, revolution: 3, regime_overthrown: 3, sovereign_default: 3, alliance_joined: 3, alliance_left: 3, alliance_formed: 3,
   gdp_rank_up: 2, democratization: 2, autocratization: 2, government_collapse: 2, election_lost: 2, diplomatic_crisis: 2, sanctions_imposed: 2, un_sanctions_lifted: 2,
   civil_war_started: 2, civil_war_won: 2, autonomy_won: 2, peace_deal: 2, conflict_faded: 1,
   pop_peak: 2, inflation_high: 2, recession_start: 2, protests: 2, coup_failed: 2, elections_restored: 2,

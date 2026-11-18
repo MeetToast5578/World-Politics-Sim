@@ -218,6 +218,7 @@ function DataTab({ b, detail }: { b: Baseline; detail: CountryDetail }) {
   return (
     <div role="tabpanel">
       <p className="fine">“Start” is the real 2023 value from public data; “Now” is the simulation. “Estimated” means the data was missing and filled in from similar countries.</p>
+      {bc.id.startsWith('NS') && <p className="fine">This country did not exist at the start: it broke away during the simulation, so “Start” shows the figures of the country it left.</p>}
       <table className="data">
         <thead><tr><th scope="col"></th><th scope="col">Now</th><th scope="col">Start</th><th scope="col">Source</th></tr></thead>
         <tbody>{rows.map(([l, now, base, k]) => <tr key={l}><th scope="row">{l}</th><td>{now}</td><td>{base}</td><td>{k ? <Src o={bf[k]} b={b} /> : ''}</td></tr>)}</tbody>

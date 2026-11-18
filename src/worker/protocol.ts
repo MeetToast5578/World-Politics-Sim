@@ -1,5 +1,6 @@
 // Messages between the UI thread and the simulation worker. The worker owns the only Simulation instance.
 import type { SimEvent } from '../engine/state';
+import type { BaselineCountry } from '../engine/types';
 
 export type StepUnit = 'day' | 'month' | 'year';
 
@@ -53,6 +54,8 @@ export interface Frame {
   /** owner (country index) per province; sent only when it changed (null otherwise) */
   provinceOwner: number[] | null;
   ownerVersion: number;
+  /** countries born during the run (appended to the baseline's), sent when their number changed (null otherwise) */
+  extraCountries: BaselineCountry[] | null;
   newEvents: SimEvent[];
   resetEvents: boolean; // true: newEvents is the full list (after load / rewind / restart)
   detail: CountryDetail | null;

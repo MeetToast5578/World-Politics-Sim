@@ -6,7 +6,7 @@ import { Simulation } from './sim';
 import type { Params } from './params';
 
 const FORMAT = 'world-sim-save';
-const VERSION = 6; // 2: single-year age × sex cohorts; 3: religion and politics; 4: diplomacy; 5: armed conflict; 6: provinces
+const VERSION = 7; // 2: single-year age × sex cohorts; 3: religion and politics; 4: diplomacy; 5: armed conflict; 6: provinces; 7: new states
 
 function toB64(bytes: Uint8Array): string {
   let s = '';
@@ -28,7 +28,7 @@ export function saveWorld(sim: Simulation): string {
     format: FORMAT, version: VERSION, params: sim.params, startDate: sim.startDate ?? null,
     seed: st.seed, startDay: st.startDay, day: st.day, ids: st.ids,
     f: Object.fromEntries(FIELDS.map((k) => [k, f64(st.f[k])])),
-    cohorts: f64(st.cohorts), g: st.g, religion: f64(st.religion), treaties: st.treaties, wars: st.wars,
+    cohorts: f64(st.cohorts), g: st.g, religion: f64(st.religion), treaties: st.treaties, wars: st.wars, newStates: st.newStates,
     pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, f64(st.pair[k])])),
     regionOwner: Array.from(st.regionOwner), provinceOwner: Array.from(st.provinceOwner),
     rng: Object.fromEntries(Object.entries(st.rng).map(([k, v]) => [k, Array.from(v)])),
@@ -41,10 +41,11 @@ export function loadWorld(baseline: Baseline, json: string): Simulation {
   const s = JSON.parse(json);
   if (s.format !== FORMAT) throw new Error('Not a world save file');
   if (s.version !== VERSION) throw new Error(`Unsupported save version ${s.version}`);
-  const ids: string[] = baseline.countries.map((c) => c.id);
-  if (ids.length !== s.ids.length || ids.some((id, i) => id !== s.ids[i]))
+  const base: string[] = baseline.countries.map((c) => c.id), ids: string[] = s.ids;
+  if (ids.length !== base.length + s.newStates.length || base.some((id, i) => id !== ids[i]))
     throw new Error('Save was made with a different baseline dataset (country list differs)');
   const sim = new Simulation(baseline, { seed: s.seed, startDate: s.startDate ?? undefined, params: s.params as Params });
+  for (const ns of s.newStates) sim.extendStructure(ns); // countries born during the run, in order
   const n = ids.length;
   const st: WorldState = {
     version: 1, seed: s.seed, startDay: s.startDay, day: s.day, n, ids,
@@ -54,10 +55,10 @@ export function loadWorld(baseline: Baseline, json: string): Simulation {
       return [k, a];
     })) as Record<Field, Float64Array>,
     cohorts: new Float64Array(fromB64(s.cohorts).buffer), g: s.g,
-    nRel: baseline.meta.religions.length, religion: new Float64Array(fromB64(s.religion).buffer), treaties: s.treaties, wars: s.wars,
+    nRel: baseline.meta.religions.length, religion: new Float64Array(fromB64(s.religion).buffer), treaties: s.treaties, wars: s.wars, newStates: s.newStates,
     pair: Object.fromEntries(PAIR_FIELDS.map((k) => {
       const a = new Float64Array(fromB64(s.pair[k]).buffer);
-      if (a.length !== sim.st.pair[k].length) throw new Error(`Corrupt save: pair field ${k}`);
+      if (a.length !== sim.pairs.i.length) throw new Error(`Corrupt save: pair field ${k}`);
       return [k, a];
     })) as Record<PairField, Float64Array>,
     regionOwner: Int16Array.from(s.regionOwner), provinceOwner: Int16Array.from(s.provinceOwner),

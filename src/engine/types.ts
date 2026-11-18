@@ -76,7 +76,7 @@ export interface Baseline {
         /** last calendar year of internal conflict, for countries at peace at the reference year */
         lastYear: Record<string, number> };
       /** a: government / first side (with state supporters), b: other side (states; rebels' state backers in civil conflicts) */
-      active: { kind: 'interstate' | 'civil'; a: string[]; b: string[]; loc: string; start: string; goal: 'government' | 'territory'; deaths: number; name: string | null; intensity: number }[];
+      active: { kind: 'interstate' | 'civil'; a: string[]; b: string[]; loc: string; start: string; goal: 'government' | 'territory'; deaths: number; name: string | null; territory?: string | null; intensity: number }[];
     };
     /** Logistic secularisation ds/dt = r·s·(1 − s/K) fitted on the World Religion Project panel. */
     secularisation: { r: number; K: number; n: number; window: string };

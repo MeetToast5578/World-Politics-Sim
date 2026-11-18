@@ -139,7 +139,7 @@ export function initConflict(st: WorldState, b: Baseline, p: Params, net: Confli
     if (a.kind === 'interstate' && (!A.length || !B.length)) continue;
     st.wars.push({
       id: st.g.warSeq++, kind: a.kind, a: a.kind === 'civil' ? [loc, ...A.filter((x) => x !== loc)] : A, b: B, loc,
-      start: parseDate(a.start), goal: a.goal, name: a.name, sev: Math.log(Math.max(25, a.deaths)), lvl: 0, score: 0,
+      start: parseDate(a.start), goal: a.goal, name: a.name, territory: a.territory ?? null, sev: Math.log(Math.max(25, a.deaths)), lvl: 0, score: 0,
       occ: 0, held: [],
       deaths: 0, rate: Math.max(25, a.deaths), peak: Math.max(25, a.deaths),
     });
@@ -228,12 +228,15 @@ function updateHeld(st: WorldState, net: ConflictNet, w: War): void {
   for (let i = 0; i < own.length; i++) if (own[i] === loc) W += net.provW[i];
   if (W <= 0) { w.held.length = 0; return; }
   const held = new Set(w.held), side = new Set(w.kind === 'interstate' ? w.a : []); // rebels have no territory outside
+  // separatists never take the heartland (the most populous province); rebels fighting for the government may
+  let capital = -1;
+  if (w.kind === 'civil' && w.goal === 'territory') for (let i = 0; i < own.length; i++) if (own[i] === loc && (capital < 0 || net.provW[i] > net.provW[capital])) capital = i;
   let share = w.held.reduce((s, i) => s + net.provW[i], 0) / W;
   while (w.held.length && share - w.occ > net.provW[w.held[w.held.length - 1]] / W / 2) { const i = w.held.pop()!; held.delete(i); share -= net.provW[i] / W; }
   for (let guard = 0; guard < 400; guard++) {
     let best = -1, bestScore = 0;
     for (let i = 0; i < own.length; i++) {
-      if (own[i] !== loc || held.has(i)) continue;
+      if (own[i] !== loc || held.has(i) || i === capital) continue;
       let sc = 0;
       for (const j of net.provNb[i]) if (held.has(j) || side.has(own[j])) sc++;
       if (sc > bestScore) { best = i; bestScore = sc; }
@@ -298,7 +301,7 @@ function strength(st: WorldState, p: Params, net: ConflictNet, pn: PairNet, w: W
   let A = 0, B = 0;
   if (w.kind === 'civil') {
     for (const c of w.a) A += effMil(st, p, c) * reach(net, p, n, c, w.loc) * (c === w.loc ? 0.5 + f.legit[c] : 0.5);
-    B = F.rebelBase * effMil(st, p, w.loc) * (0.5 + f.unrest[w.loc]);
+    B = F.rebelBase * effMil(st, p, w.loc) * (0.5 + f.unrest[w.loc]) * (1 + F.rebelTerritoryStrength * w.occ); // territory brings recruits and revenue
     for (const c of w.b) B += 0.5 * effMil(st, p, c) * reach(net, p, n, c, w.loc); // backers send aid and advisers, not armies
   } else {
     for (const c of w.a) A += effMil(st, p, c) * reach(net, p, n, c, w.loc);
@@ -313,7 +316,11 @@ function changeGovernment(st: WorldState, c: number) {
   f.govYears[c] = 0; f.govTerms[c] = 0; f.approval[c] = 0.5; f.legit[c] = Math.min(f.legit[c], 0.4);
 }
 
-function endWar(st: WorldState, p: Params, net: ConflictNet, w: War, u: number, forceCeasefire = false): void {
+/** Rebels who won a war over territory ask for a state of their own (handled by the simulation, which owns the
+ *  structures a new country must be added to). */
+export interface SecessionRequest { parent: number; provinces: number[]; share: number; u: number; territory: string | null }
+
+function endWar(st: WorldState, p: Params, net: ConflictNet, w: War, u: number, out: SecessionRequest[], uSec = 1, forceCeasefire = false): void {
   const f = st.f, x = { score: w.score, deaths: w.deaths, years: (st.day - w.start) / 365.25, occ: w.occ, id: w.id };
   const loser = w.loc, att = w.a[0], O = p.conflict.outcome;
   if (w.kind === 'civil') {
@@ -326,8 +333,9 @@ function endWar(st: WorldState, p: Params, net: ConflictNet, w: War, u: number, 
         if (democratic) { f.regime[loser] = 2; f.demo[loser] = Math.max(f.demo[loser], 0.5); f.nextElection[loser] = st.day + 365; }
         else { f.regime[loser] = 0; f.demo[loser] *= 0.6; f.nextElection[loser] = -1; }
       } else {
-        emit(st, { k: 'autonomy_won', c: loser, v: w.deaths, x });
-        f.unrest[loser] = Math.max(0.05, f.unrest[loser] * 0.8);
+        const share = heldShare(st, net, w);
+        if (w.held.length && share >= 0.005 && uSec < O.secession) out.push({ parent: loser, provinces: w.held.slice(), share, u, territory: w.territory ?? null });
+        else { emit(st, { k: 'autonomy_won', c: loser, v: w.deaths, x }); f.unrest[loser] = Math.max(0.05, f.unrest[loser] * 0.8); }
       }
     } else if (u < O.peace) {
       emit(st, { k: 'peace_deal', c: loser, v: w.deaths, x });
@@ -365,12 +373,13 @@ function nuclearStrike(st: WorldState, p: Params, user: number, target: number, 
   emit(st, { k: 'nuclear_strike', c: user, o: target, v: dead, x: { score: w.score, occ: w.occ } });
 }
 
-export function conflictMonthly(st: WorldState, p: Params, rng: Rng, net: ConflictNet, pn: PairNet): void {
+export function conflictMonthly(st: WorldState, p: Params, rng: Rng, net: ConflictNet, pn: PairNet): SecessionRequest[] {
+  const secessions: SecessionRequest[] = [];
   const f = st.f, P = p.conflict, n = st.n;
   const belligerent = new Uint8Array(n), home = new Uint8Array(n);
   for (const w of st.wars.slice()) {
     // fixed draws per war per month
-    const u1 = rng.normal(), u2 = rng.normal(), uEnd = rng.next(), uOut = rng.next(), uNuc = rng.next(), uRet = rng.next();
+    const u1 = rng.normal(), u2 = rng.normal(), uEnd = rng.next(), uOut = rng.next(), uNuc = rng.next(), uRet = rng.next(), uSec = rng.next();
     const [A, B] = strength(st, p, net, pn, w);
     const bal = A + B > 0 ? (A - B) / (A + B) : 0;
     w.score = clamp(w.score + P.fight.kappa * bal * MONTH + P.fight.noise * Math.sqrt(MONTH) * u1, -1, 1);
@@ -384,9 +393,13 @@ export function conflictMonthly(st: WorldState, p: Params, rng: Rng, net: Confli
     if (w.kind === 'interstate') { w.occ = clamp(w.occ + P.fight.occSpeed * w.score * MONTH, 0, P.fight.maxOccupation); updateHeld(st, net, w); }
     else {
       // rebel-held territory: grows with the rebels' fortunes and the war's intensity, relaxes over ~6 months
-      const target = w.peak < 1000 ? 0 : P.fight.rebelTerritory / (1 + Math.exp(3 * w.score)) * Math.sqrt(Math.min(1, w.rate / 1000)); // insurgencies below civil-war scale hold no territory
+      // insurgencies below civil-war scale hold no territory; separatists hold at most their region (maxSeparatist)
+      const target = w.peak < 1000 ? 0 : Math.min(w.goal === 'territory' ? P.fight.maxSeparatist : 1, P.fight.rebelTerritory / (1 + Math.exp(3 * w.score)) * Math.sqrt(Math.min(1, w.rate / 1000)));
       w.occ += (target - w.occ) * (1 - Math.exp(-MONTH / 0.5));
       updateHeld(st, net, w);
+      // the state loses output, taxes and authority over what the rebels hold
+      f.cycle[w.loc] -= P.damage.rebelOutput * w.occ * MONTH;
+      f.legit[w.loc] = Math.max(0.02, f.legit[w.loc] - P.damage.rebelLegitimacy * w.occ * MONTH);
     }
     // casualties: in civil wars all on the territory; in interstate wars split by the other side's strength
     if (w.kind === 'civil') kill(st, w.loc, md, true);
@@ -410,12 +423,12 @@ export function conflictMonthly(st: WorldState, p: Params, rng: Rng, net: Confli
       nuclearStrike(st, p, w.loc, w.a[0], w);
       if (net.nuclear[w.a[0]] && uRet < P.nuclear.retaliate) nuclearStrike(st, p, w.a[0], w.loc, w);
       w.occ = 0; w.held = [];
-      endWar(st, p, net, w, uOut, true);
+      endWar(st, p, net, w, uOut, secessions, 1, true);
       continue;
     }
     const t = (st.day - w.start) / 365.25, D = P.duration;
     const h = (w.kind === 'civil' ? D.civilAlpha / (D.civilTau + t) : D.interAlpha / (D.interTau + t)) * (1 + D.decisive * w.score * w.score);
-    if (uEnd < 1 - Math.exp(-h * MONTH)) endWar(st, p, net, w, uOut);
+    if (uEnd < 1 - Math.exp(-h * MONTH)) endWar(st, p, net, w, uOut, secessions, uSec);
   }
   for (let c = 0; c < n; c++) if (home[c] || belligerent[c]) aggregate(st, c);
   updateWarLoad(st);
@@ -427,6 +440,7 @@ export function conflictMonthly(st: WorldState, p: Params, rng: Rng, net: Confli
     const target = belligerent[c] ? Math.max(f.milex0[c], M.base + M.home * Math.min(1, f.warLoad[c] / 3) * home[c]) : f.milex0[c];
     f.milexShare[c] += (target - f.milexShare[c]) * (1 - Math.exp(-MONTH / (belligerent[c] ? M.years : M.demobYears)));
   }
+  return secessions;
 }
 
 // ------------------------------------------------------------------ yearly onsets

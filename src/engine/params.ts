@@ -194,7 +194,11 @@ export const DEFAULT_PARAMS = {
        *  year; × 2/(1 + e^(3·score)) with the rebels' fortunes, × √(deaths/1,000) below that. Only conflicts that
        *  have reached civil-war scale (1,000 deaths a year) hold territory. Display and history only: no effect on
        *  fighting yet. Assumption (RSF in Sudan, Myanmar's resistance ≈ ⅓). */
-      rebelTerritory: 0.3 },
+      rebelTerritory: 0.3,
+      /** separatists (wars over territory) hold at most this share of the population, never the most populous province */
+      maxSeparatist: 0.2,
+      /** rebels' strength × (1 + this × share they hold): territory brings recruits and revenue (assumption) */
+      rebelTerritoryStrength: 1.5 },
     /** Military aid in interstate wars: a non-belligerent m helps side s when trust(m, s) − trust(m, enemy) > min,
      *  with share × (difference − min) of its military capital (US aid to Ukraine ≈ 5% of US military spending in
      *  2022-23; magnitude assumption). Aid is shipped, so distance does not reduce it. */
@@ -204,7 +208,9 @@ export const DEFAULT_PARAMS = {
      *  battle death (UNHCR: Ukraine, Syria order 20-40), civilians killed per battle death (assumption 0.3), unrest. */
     damage: { capital: 0.05, tfp: 0.01, refugeesPerDeath: 30, civiliansPerDeath: 0.3, unrest: 0.3,
       /** caps: battle deaths ≤ 1% of the population a year; refugees ≤ 0.4% a month (Syria 2012-16 ≈ 0.5%). */
-      maxDeathShare: 0.01, maxRefugeeShare: 0.004 },
+      maxDeathShare: 0.01, maxRefugeeShare: 0.004,
+      /** rebel-held territory costs the state output (domestic cycle, per year per share held) and legitimacy */
+      rebelOutput: 0.1, rebelLegitimacy: 0.2 },
     /** Mobilisation: belligerents' military spending moves toward 4% of GDP plus up to 25% for the country fought
      *  over (Ukraine 2023 ≈ 37%, Russia ≈ 6%), relaxing back to the pre-war level after (≈ 5 years). */
     mobilise: { base: 0.04, home: 0.25, years: 1, demobYears: 5 },
@@ -215,7 +221,13 @@ export const DEFAULT_PARAMS = {
     /** Outcome thresholds: a side wins outright when the score passes ±victory; otherwise a peace agreement with
      *  probability peace (civil; Kreutz 2010: of civil conflict terminations ≈ 16% victories, ≈ 18% peace
      *  agreements, ≈ 17% ceasefires, ≈ 46% low activity). */
-    outcome: { victory: 0.75, peace: 0.35 },
+    outcome: { victory: 0.75, peace: 0.35,
+      /** rebels who win a war over territory form their own state with this probability (otherwise self-rule);
+       *  since 1990 a handful of states were born from conflict (Eritrea, East Timor, Kosovo, South Sudan), about one
+       *  a decade (assumption). */
+      secession: 0.4,
+      /** a new state starts as a democracy with this probability, otherwise as an autocracy (assumption) */
+      secessionDemocratic: 0.3 },
     /** Conflict-trap memory decays over ~10 years; rally-round-the-flag approval at the start of an interstate war. */
     memoryYears: 10, rally: 0.08,
     /** Nuclear use: only by a nuclear state whose own territory is substantially occupied or whose government is

@@ -188,9 +188,31 @@ describe('armed conflict', () => {
       years(sim, 1);
       for (const x of sim.st.wars) for (const i of x.held) expect(sim.st.provinceOwner[i]).toBe(x.loc);
     }
-    // every province that changed hands went to a country that annexed territory
-    const gainers = new Set(sim.st.events.filter((e) => e.k === 'territory_annexed').map((e) => e.c));
+    // every province that changed hands went to a country that annexed territory or became independent
+    const gainers = new Set(sim.st.events.filter((e) => e.k === 'territory_annexed' || e.k === 'independence').map((e) => e.c));
     sim.st.provinceOwner.forEach((o, i) => { if (o !== owned0[i]) expect(gainers.has(o)).toBe(true); });
+  });
+  it('a new state: provinces, people and capital move without loss; saves and continuation stay exact', () => {
+    const sim = new Simulation(b, { seed: 4 }), st = sim.st;
+    const ukr = st.ids.indexOf('UKR'), n0 = st.n;
+    const lviv = b.provinces.findIndex((p) => p.region === 'UKR' && p.name === 'Lviv');
+    const P = worldPop(sim), K = st.f.K.reduce((x, y) => x + y, 0);
+    (sim as any).secede({ parent: ukr, provinces: [lviv], share: 0.06, u: 0.1, territory: null });
+    const c = n0;
+    expect(sim.st.n).toBe(n0 + 1);
+    expect(sim.st.ids[c]).toBe('NS1');
+    expect(sim.baseline.countries[c].name).toBe('Republic of Lviv');
+    expect(sim.st.provinceOwner[lviv]).toBe(c);
+    expect(worldPop(sim)).toBeCloseTo(P, 0);
+    expect(sim.st.f.K.reduce((x, y) => x + y, 0)).toBeCloseTo(K, 0);
+    let rs = 0; for (let r = 0; r < st.nRel; r++) rs += sim.st.religion[c * st.nRel + r];
+    expect(rs).toBeCloseTo(1, 9);
+    expect(sim.st.events.at(-1)!.k).toBe('independence');
+    const saved = loadWorld(b, saveWorld(sim));
+    expect(saved.hash()).toBe(sim.hash());
+    years(sim, 3); years(saved, 3);
+    expect(saved.hash()).toBe(sim.hash());
+    for (let k = 0; k < sim.st.n; k++) expect(Number.isFinite(sim.st.f.gdp[k]) && totalPop(sim.st, k) > 0).toBe(true);
   });
   it('a change of territory moves people, capital and output without creating or losing any', () => {
     const sim = new Simulation(b, { seed: 1 }), st = sim.st, f = st.f;

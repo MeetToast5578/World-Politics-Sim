@@ -361,6 +361,7 @@ async function conflicts(countries) {
     const a = ids(r.gwno_a), b = ids(r.gwno_b);
     if (a.length && b.length) active.push({ kind: 'interstate', a, b, loc: b[0], start: e.r.start_date2, goal: r.incompatibility === '2' ? 'government' : 'territory', deaths: deaths.get(`${r.conflict_id}|${W1}`) ?? 25, name: r.territory_name || null, intensity: +r.intensity_level });
   }
+  const r0ok = (t) => !/^(Islamic State|Fatah|Hamas)/i.test(t); // territory names, not group names
   for (const s of spells.filter((x) => x.last === W1)) {
     const rows = byLoc.get(s.loc).get(W1).filter((r) => !(r.ep_end === '1' && !byLoc.get(s.loc).has(W1 + 1)));
     if (!rows.length) continue;
@@ -369,7 +370,7 @@ async function conflicts(countries) {
     active.push({
       kind: 'civil', a: [s.loc, ...new Set(rows.flatMap((r) => small(r.gwno_a_2nd)))].filter((v, i, arr) => arr.indexOf(v) === i), b: [...new Set(rows.flatMap((r) => small(r.gwno_b_2nd)))].filter((x) => x !== s.loc),
       loc: s.loc, start: `${s.start}-01-01`, goal: rows.some((r) => r.incompatibility !== '1') ? 'government' : 'territory',
-      deaths: d.reduce((x, y) => x + y, 0), name: (() => { const g = main.side_b.split(',').map((x) => x.trim()); return g.length > 3 ? `${g.slice(0, 2).join(', ')} and others` : g.join(', '); })(), intensity: Math.max(...rows.map((r) => +r.intensity_level)),
+      deaths: d.reduce((x, y) => x + y, 0), territory: rows.map((r) => r.territory_name).find((t) => t && r0ok(t)) ?? null, name: (() => { const g = main.side_b.split(',').map((x) => x.trim()); return g.length > 3 ? `${g.slice(0, 2).join(', ')} and others` : g.join(', '); })(), intensity: Math.max(...rows.map((r) => +r.intensity_level)),
     });
   }
   return {

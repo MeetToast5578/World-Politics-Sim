@@ -21,7 +21,7 @@ const SPEEDS: [string, number, string][] = [
 // news ripple colours by kind: fighting red, upheaval orange, politics and diplomacy blue, peace green, economy purple
 const PING_COLORS = { war: 'rgba(192,67,47,ALPHA)', upheaval: 'rgba(214,124,40,ALPHA)', politics: 'rgba(46,109,180,ALPHA)', peace: 'rgba(59,139,90,ALPHA)', economy: 'rgba(122,91,181,ALPHA)', other: 'rgba(90,100,110,ALPHA)' };
 function pingKind(k: string): keyof typeof PING_COLORS {
-  if (/^(war_|territory_|nuclear|civil_war_started|civil_war_escalated|regime_imposed)/.test(k)) return 'war';
+  if (/^(war_|territory_|nuclear|civil_war_started|civil_war_escalated|regime_imposed|independence)/.test(k)) return 'war';
   if (/^(ceasefire|peace_deal|conflict_faded|civil_war_won|autonomy_won)/.test(k)) return 'peace';
   if (/^(coup|revolution|regime_overthrown|rebels_won|protests|government_collapse|autocratization)/.test(k)) return 'upheaval';
   if (/^(election|democratization|elections_restored|alliance|sanctions|un_sanctions|diplomatic)/.test(k)) return 'politics';
@@ -35,7 +35,7 @@ function writeFlag() { try { localStorage.setItem(WELCOMED, '1'); } catch { /* p
 
 export function App() {
   const worker = useRef<Worker | null>(null);
-  const [baseline, setBaseline] = useState<Baseline | null>(null);
+  const [baseline0, setBaseline] = useState<Baseline | null>(null);
   const [topo, setTopo] = useState<Topology | null>(null);
   const [frame, setFrame] = useState<Frame | null>(null);
   const events = useRef<SimEvent[]>([]);
@@ -86,6 +86,11 @@ export function App() {
   useEffect(() => { send({ type: 'select', c: selected }); }, [selected, send]);
   useEffect(() => { if (!message) return; const t = setTimeout(() => setMessage(null), 6000); return () => clearTimeout(t); }, [message]);
 
+  // countries born during the run are appended to the start data (the worker sends them when their number changes)
+  const extra = useRef<Baseline['countries']>([]);
+  if (frame?.extraCountries) extra.current = frame.extraCountries;
+  const extraKey = extra.current.map((c) => c.id).join();
+  const baseline = useMemo(() => (baseline0 && extra.current.length ? { ...baseline0, countries: [...baseline0.countries, ...extra.current] } : baseline0), [baseline0, extraKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const name = useCallback((c: number) => baseline?.countries[c]?.name ?? '?', [baseline]);
   nameRef.current = name;
   // provinces with their current owners (the worker sends owners only when they change)
@@ -116,15 +121,17 @@ export function App() {
     const P = baseline.provinces;
     return baseline.countries.map((c, k) => {
       let ids = P.map((_, i) => i).filter((i) => P[i].region === c.id);
+      if (!ids.length) ids = P.map((_, i) => i).filter((i) => owners.current[i] === k); // a new state: the provinces it holds
       if (!ids.length) ids = P.map((_, i) => i).filter((i) => c.regions.includes(P[i].region));
+      if (!ids.length) return { c: k, name: c.name, lon: c.geo.centroid[0], lat: c.geo.centroid[1], pop: 0 };
       let A = 0, x = 0, y = 0;
       for (const i of ids) { const a = Math.max(1, P[i].areaKm2); A += a; x += a * P[i].centroid[0]; y += a * P[i].centroid[1]; }
       x /= A; y /= A;
       let best = ids[0], d = Infinity;
       for (const i of ids) { const dd = (P[i].centroid[0] - x) ** 2 + (P[i].centroid[1] - y) ** 2; if (dd < d) { d = dd; best = i; } }
-      return { c: k, name: c.name, lon: P[best].centroid[0], lat: P[best].centroid[1], pop: c.fields.pop?.v ?? 0 };
+      return { c: k, name: c.name, lon: P[best].centroid[0], lat: P[best].centroid[1], pop: frame?.metrics.pop[k] ?? c.fields.pop?.v ?? 0 };
     }).sort((a, b) => b.pop - a.pop);
-  }, [baseline]);
+  }, [baseline, ownerVersion]); // eslint-disable-line react-hooks/exhaustive-deps
   const pings = useRef<Ping[]>([]);
 
   const mode = MAP_MODES.find((m) => m.id === modeId)!;

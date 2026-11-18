@@ -2,6 +2,7 @@
 // All mutable simulation state lives in WorldState so that save / load / hash / replay are complete by construction.
 import type { Baseline } from './types';
 import { parseDate } from './calendar';
+import type { NewState } from './systems/secession';
 
 export const FIELDS = [
   // demography: broad-age aggregates (derived from cohorts), vital rates, life-table and fertility parameters
@@ -50,6 +51,7 @@ export interface War {
   start: number;            // day
   goal: 'government' | 'territory';
   name: string | null;      // rebel group or disputed territory (UCDP) for conflicts under way at the start
+  territory?: string | null; // disputed territory (UCDP), for wars over territory under way at the start
   sev: number;              // ln of the war's typical battle deaths per year (drawn at onset)
   lvl: number;              // current deviation of ln deaths from sev (AR(1) month to month)
   score: number;            // −1..1: > 0 side a (government / attacker) is winning
@@ -93,6 +95,7 @@ export interface WorldState {
   pair: Record<PairField, Float64Array>; // diplomatic relations per pair (allocated once the pair list is built)
   treaties: Treaty[];            // defence treaties, members as country indices
   wars: War[];                   // armed conflicts under way
+  newStates: NewState[];         // countries born during the simulation (index = baseline count + position)
   regionOwner: Int16Array;       // map region (admin-0 unit) -> country index at the start (-1 = none)
   provinceOwner: Int16Array;     // province -> country index; territorial change edits this
   rng: Record<string, Uint32Array>;
@@ -110,7 +113,7 @@ export function createState(baseline: Baseline, seed: number, startDate?: string
   const startDay = parseDate(startDate ?? baseline.meta.startDate);
   const st: WorldState = {
     version: 1, seed: seed >>> 0, startDay, day: startDay, n, ids: cs.map((c) => c.id), f, cohorts: new Float64Array(n * 2 * AGES), g: { oilLn: 0, oilDln: 0, coupBase: 0, offCrisis: 0, offSanction: 0, offJoin: 0, offLeave: 0, offPact: 0, offCivil: 0, offWar: 0, warSeq: 1 },
-    pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, new Float64Array(0)])) as Record<PairField, Float64Array>, treaties: [], wars: [],
+    pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, new Float64Array(0)])) as Record<PairField, Float64Array>, treaties: [], wars: [], newStates: [],
     nRel: baseline.meta.religions.length, religion: new Float64Array(n * baseline.meta.religions.length),
     regionOwner: Int16Array.from(baseline.regions.map((r) => (r.owner == null ? -1 : idx.get(r.owner) ?? -1))),
     provinceOwner: (() => { const ro = new Map(baseline.regions.map((r) => [r.id, r.owner == null ? -1 : idx.get(r.owner) ?? -1])); return Int16Array.from(baseline.provinces.map((p) => ro.get(p.region) ?? -1)); })(),
@@ -136,6 +139,7 @@ export function cloneState(st: WorldState): WorldState {
     pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, st.pair[k].slice()])) as Record<PairField, Float64Array>,
     treaties: st.treaties.map((t) => ({ ...t, members: t.members.slice() })),
     wars: st.wars.map((w) => ({ ...w, a: w.a.slice(), b: w.b.slice(), held: w.held.slice() })),
+    newStates: st.newStates.map((s) => ({ ...s, provinces: s.provinces.slice(), neighbors: s.neighbors.slice() })),
     regionOwner: st.regionOwner.slice(),
     provinceOwner: st.provinceOwner.slice(),
     rng: Object.fromEntries(Object.entries(st.rng).map(([k, v]) => [k, v.slice()])),
@@ -158,6 +162,7 @@ export function hashState(st: WorldState): string {
   for (const k of PAIR_FIELDS) mix(new Uint8Array(st.pair[k].buffer));
   mix(enc.encode(JSON.stringify(st.treaties)));
   mix(enc.encode(JSON.stringify(st.wars)));
+  mix(enc.encode(JSON.stringify(st.newStates)));
   mix(new Uint8Array(st.regionOwner.buffer));
   mix(new Uint8Array(st.provinceOwner.buffer));
   for (const k of Object.keys(st.rng).sort()) mix(new Uint8Array(st.rng[k].buffer));
