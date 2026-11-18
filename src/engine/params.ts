@@ -189,7 +189,12 @@ export const DEFAULT_PARAMS = {
     deaths: { civilMedian: 325, civilSd: 1.45, interMedian: 140, interSd: 3.0, lvlRho: 0.94, lvlSd: 0.3 },
     /** Fighting: score drift from the balance of strength (κ per year) plus noise; home advantage of defenders;
      *  strength = military capital × reach (1 / (1 + distance / reachKm)); governments' strength scales with legitimacy. */
-    fight: { kappa: 0.3, noise: 0.5, home: 1.5, reachKm: 2000, rebelBase: 0.6, maxOccupation: 0.5, occSpeed: 0.1 },
+    fight: { kappa: 0.3, noise: 0.5, home: 1.5, reachKm: 2000, rebelBase: 0.6, maxOccupation: 0.5, occSpeed: 0.1,
+      /** Rebel-held territory (share of the population) when neither side is winning, in a war of 1,000+ deaths a
+       *  year; × 2/(1 + e^(3·score)) with the rebels' fortunes, × √(deaths/1,000) below that. Only conflicts that
+       *  have reached civil-war scale (1,000 deaths a year) hold territory. Display and history only: no effect on
+       *  fighting yet. Assumption (RSF in Sudan, Myanmar's resistance ≈ ⅓). */
+      rebelTerritory: 0.3 },
     /** Military aid in interstate wars: a non-belligerent m helps side s when trust(m, s) − trust(m, enemy) > min,
      *  with share × (difference − min) of its military capital (US aid to Ukraine ≈ 5% of US military spending in
      *  2022-23; magnitude assumption). Aid is shipped, so distance does not reduce it. */

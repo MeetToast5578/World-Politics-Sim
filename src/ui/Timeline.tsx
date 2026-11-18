@@ -55,7 +55,7 @@ export function Timeline({ startDay, day, events, branches, busy, weight, onRewi
 
   const ticks: number[] = [];
   const yrsShown = span / 365.25, step = yrsShown > 120 ? 50 : yrsShown > 60 ? 20 : yrsShown > 25 ? 10 : 5;
-  for (let yr = Math.ceil(y0 / step) * step; daysFromCivil(yr, 1, 1) <= startDay + span; yr += step) if (pos(daysFromCivil(yr, 1, 1)) > 9) ticks.push(yr); // keep clear of the start label
+  for (let yr = Math.ceil(y0 / step) * step; daysFromCivil(yr, 1, 1) <= startDay + span; yr += step) if (pos(daysFromCivil(yr, 1, 1)) > 14) ticks.push(yr); // keep clear of the start label (narrow screens too)
 
   return (
     <footer className="timeline">

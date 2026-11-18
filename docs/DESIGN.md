@@ -17,7 +17,7 @@ Sections marked **[implemented]** describe running code; **[design]** describes 
 | Backtest 2000→2023 with naive benchmarks, ensemble coverage, sensitivity analysis | implemented (`docs/BACKTEST.md`) |
 | Military capital stock (perpetual inventory of spending) | implemented; sets fighting strength (§3.6) |
 | Chronicle/news events carrying their causal inputs | implemented |
-| Observer UI: light, plain-language atlas; 28 map modes (7 featured), history bar with rewind, tabbed country view, world summary, news with explanations | implemented |
+| Observer UI: light, plain-language atlas of provinces with country names, animated news ripples, pulsing conflicts, marching front lines, occupied and rebel-held hatching; 29 map modes (8 featured), history bar with rewind, tabbed country view, world summary, news with explanations | implemented |
 | Religion: 31 denominations/sects per country, secularisation, fractionalisation and polarisation | implemented (Phase 3, see §3.3) |
 | Domestic politics: democracy index and regime, approval, legitimacy, unrest, elections, coups, uprisings, regime change | implemented, aggregate level (Phase 3, see §3.4); political actors/factions still design |
 | Diplomacy: relations (trust, grievance, threat), defence treaties, sanctions, crises, friend-shoring, "why" inspector | implemented (Phase 3b, see §3.5); international organisations other than defence treaties still design |
@@ -336,6 +336,10 @@ ending     monthly hazard α/(τ + t) · (1 + score²): civil α = 0.95, τ = 2.
            provinces it holds (if ≥ 5% of the defender's people) unless it lost: they change owner on the map, and
            their share of the defender's people, capital and output moves with them (public debt stays). A
            victorious attacker in a war over government imposes a new one.
+rebels     in conflicts that have reached civil-war scale (1,000 battle deaths a year), rebels hold provinces: a
+           share of the population 0.3 · 2/(1 + e^(3·score)) · √(min(1, deaths/1,000)), approached over ~6 months,
+           starting from the province farthest from the most populous one and growing to its neighbours. Shown on
+           the map; no effect on fighting yet.
 nuclear    a nuclear-armed state (SIPRI 2023 list) whose own territory is > 25% occupied, or whose government a
            foreign army is about to overthrow, uses nuclear weapons with probability 0.5% a month: 2% of the
            target's population killed, a quarter of its capital destroyed, a world oil shock and recession; the
@@ -363,7 +367,7 @@ growing; whether conflict risk should depend on absolute or relative income is a
 **Limitations.** Province populations are fixed weights from the start (people moved with a province are the
 province's share of the country's population at the time); land contiguity between countries is not updated after
 annexations; secession creates no new state (rebels win "self-rule"); one civil conflict per country stands for all of
-UCDP's dyads there; rebels hold no territory on the map; non-state and one-sided violence (UCDP's other datasets) are
+UCDP's dyads there; rebel-held territory does not yet change the fighting or the economy; non-state and one-sided violence (UCDP's other datasets) are
 not modelled. Distant wars need a major military and a quarrel; a simulated diplomatic crisis can still create one
 with no historical analogue (about one in 100 interstate wars).
 
