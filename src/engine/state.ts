@@ -43,7 +43,8 @@ export type Field = (typeof FIELDS)[number];
 // oilLn: log real oil price relative to baseline; oilDln: its last quarterly change;
 // coupBase and off*: hazard offsets solved at t0 so world event rates match observed base rates
 // offCivil, offWar: armed-conflict onset offsets (same method); warSeq: id of the next war
-export const GLOBALS = ['oilLn', 'oilDln', 'coupBase', 'offCrisis', 'offSanction', 'offJoin', 'offLeave', 'offPact', 'offCivil', 'offWar', 'warSeq'] as const;
+// ethIn, ethEx: normalisers that make the groups' inclusion and exclusion hazards average to EPR's rates at t0
+export const GLOBALS = ['oilLn', 'oilDln', 'coupBase', 'offCrisis', 'offSanction', 'offJoin', 'offLeave', 'offPact', 'offCivil', 'offWar', 'warSeq', 'ethIn', 'ethEx'] as const;
 
 /** Per-pair diplomatic state (pair list in systems/diplomacy.ts PairNet; i < j). sancIJ: sanctions by i on j. */
 export const PAIR_FIELDS = ['trust', 'trust0', 'grievance', 'sancIJ', 'sancJI'] as const;
@@ -68,6 +69,7 @@ export interface War {
   held: number[];           // interstate: provinces of loc the attacker holds, in the order taken (approximates occ)
   deaths: number;           // cumulative battle deaths
   rate: number;             // battle deaths per year, current
+  group?: number;           // civil: the ethnic group the rebels recruit from (index into WorldState.groups), −1/absent: none
   peak: number;             // highest yearly rate so far
 }
 
@@ -79,6 +81,12 @@ export const cohortIndex = (c: number, sex: number) => (c * 2 + sex) * AGES;
 /** Yearly history series recorded for charts (Float32 to halve memory). */
 export const HIST_FIELDS = ['pop', 'gdp', 'gdpPc', 'tfr', 'lifeExp', 'debtRatio', 'milCap', 'old', 'school'] as const;
 export type HistField = (typeof HIST_FIELDS)[number];
+
+/** A politically relevant ethnic group (Ethnic Power Relations). c: the country it lives in now; size: share of that
+ *  country's population; status: 0 discriminated, 1 powerless, 2 junior partner, 3 senior partner, 4 dominant;
+ *  aut: regional autonomy; down: day it last lost access to power; home: homeland provinces (GeoEPR). Groups are
+ *  never added or removed, so an index names the same group for the whole run. */
+export interface EthnicGroup { name: string; c: number; size: number; status: number; aut: number; down: number; home: number[] }
 
 export interface SimEvent {
   d: number;          // day
@@ -105,6 +113,7 @@ export interface WorldState {
   treaties: Treaty[];            // defence treaties, members as country indices
   wars: War[];                   // armed conflicts under way
   newStates: NewState[];         // countries born during the simulation (index = baseline count + position)
+  groups: EthnicGroup[];         // ethnic groups (systems/ethnic.ts)
   nOrg: number;                  // international organisations (baseline.meta.organisations)
   orgIds: string[];              // their ids, in that order
   orgMember: Uint8Array;         // country × organisation: 0 none, 1 member, 2 suspended
@@ -125,8 +134,8 @@ export function createState(baseline: Baseline, seed: number, startDate?: string
   const idx = new Map(cs.map((c, i) => [c.id, i]));
   const startDay = parseDate(startDate ?? baseline.meta.startDate);
   const st: WorldState = {
-    version: 1, seed: seed >>> 0, startDay, day: startDay, n, ids: cs.map((c) => c.id), f, cohorts: new Float64Array(n * 2 * AGES), g: { oilLn: 0, oilDln: 0, coupBase: 0, offCrisis: 0, offSanction: 0, offJoin: 0, offLeave: 0, offPact: 0, offCivil: 0, offWar: 0, warSeq: 1 },
-    pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, new Float64Array(0)])) as Record<PairField, Float64Array>, treaties: [], wars: [], newStates: [], nOrg: 0, orgIds: [], orgMember: new Uint8Array(0), orgMember0: new Uint8Array(0),
+    version: 1, seed: seed >>> 0, startDay, day: startDay, n, ids: cs.map((c) => c.id), f, cohorts: new Float64Array(n * 2 * AGES), g: { oilLn: 0, oilDln: 0, coupBase: 0, offCrisis: 0, offSanction: 0, offJoin: 0, offLeave: 0, offPact: 0, offCivil: 0, offWar: 0, warSeq: 1, ethIn: 1, ethEx: 1 },
+    pair: Object.fromEntries(PAIR_FIELDS.map((k) => [k, new Float64Array(0)])) as Record<PairField, Float64Array>, treaties: [], wars: [], newStates: [], groups: [], nOrg: 0, orgIds: [], orgMember: new Uint8Array(0), orgMember0: new Uint8Array(0),
     nRel: baseline.meta.religions.length, religion: new Float64Array(n * baseline.meta.religions.length),
     regionOwner: Int16Array.from(baseline.regions.map((r) => (r.owner == null ? -1 : idx.get(r.owner) ?? -1))),
     provinceOwner: (() => { const ro = new Map(baseline.regions.map((r) => [r.id, r.owner == null ? -1 : idx.get(r.owner) ?? -1])); return Int16Array.from(baseline.provinces.map((p) => ro.get(p.region) ?? -1)); })(),
@@ -153,6 +162,7 @@ export function cloneState(st: WorldState): WorldState {
     treaties: st.treaties.map((t) => ({ ...t, members: t.members.slice() })),
     wars: st.wars.map((w) => ({ ...w, a: w.a.slice(), b: w.b.slice(), held: w.held.slice() })),
     newStates: st.newStates.map((s) => ({ ...s, provinces: s.provinces.slice(), neighbors: s.neighbors.slice() })),
+    groups: st.groups.map((g) => ({ ...g, home: g.home.slice() })),
     orgIds: st.orgIds.slice(), orgMember: st.orgMember.slice(), orgMember0: st.orgMember0.slice(),
     regionOwner: st.regionOwner.slice(),
     provinceOwner: st.provinceOwner.slice(),
@@ -177,6 +187,7 @@ export function hashState(st: WorldState): string {
   mix(enc.encode(JSON.stringify(st.treaties)));
   mix(enc.encode(JSON.stringify(st.wars)));
   mix(enc.encode(JSON.stringify(st.newStates)));
+  mix(enc.encode(JSON.stringify(st.groups)));
   mix(st.orgMember); mix(st.orgMember0);
   mix(new Uint8Array(st.regionOwner.buffer));
   mix(new Uint8Array(st.provinceOwner.buffer));

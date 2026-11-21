@@ -94,7 +94,8 @@ export function App() {
   const baseline = useMemo(() => (baseline0 && extra.current.length ? { ...baseline0, countries: [...baseline0.countries, ...extra.current] } : baseline0), [baseline0, extraKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const name = useCallback((c: number) => baseline?.countries[c]?.name ?? '?', [baseline]);
   nameRef.current = name;
-  const news = useMemo(() => ({ org: (o: number) => baseline?.meta.organisations[o]?.name ?? '?', party: (c: number) => baseline?.countries[c]?.rulingParty?.name }), [baseline]);
+  const groupNames = useMemo(() => (baseline0 ? baseline0.countries.flatMap((c) => (c.groups ?? []).map((g) => g.name)) : []), [baseline0]); // same order as the engine's groups
+  const news = useMemo(() => ({ org: (o: number) => baseline?.meta.organisations[o]?.name ?? '?', party: (c: number) => baseline?.countries[c]?.rulingParty?.name, group: (g: number) => groupNames[g] ?? 'A group' }), [baseline, groupNames]);
   newsRef.current = news;
   // provinces with their current owners (the worker sends owners only when they change)
   const owners = useRef<number[]>([]);

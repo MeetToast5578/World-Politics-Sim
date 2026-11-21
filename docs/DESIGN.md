@@ -17,12 +17,13 @@ Sections marked **[implemented]** describe running code; **[design]** describes 
 | Backtest 2000→2023 with naive benchmarks, ensemble coverage, sensitivity analysis | implemented (`docs/BACKTEST.md`) |
 | Military capital stock (perpetual inventory of spending) | implemented; sets fighting strength (§3.6) |
 | Chronicle/news events carrying their causal inputs | implemented |
-| Observer UI: light, plain-language atlas of provinces with country names, animated news ripples, pulsing conflicts, marching front lines, occupied and rebel-held hatching; 32 map modes (8 featured), history bar with rewind, tabbed country view, world summary, news with explanations | implemented |
+| Observer UI: light, plain-language atlas of provinces with country names, animated news ripples, pulsing conflicts, marching front lines, occupied and rebel-held hatching; 33 map modes (8 featured), history bar with rewind, tabbed country view, world summary, news with explanations | implemented |
 | Religion: 31 denominations/sects per country, secularisation, fractionalisation and polarisation | implemented (Phase 3, see §3.3) |
 | Domestic politics: democracy index and regime, approval, legitimacy, unrest, elections, coups, uprisings, regime change; parties (eight families, real ruling party at the start), coalitions, military and council rule | implemented (Phase 3, see §3.4); business, regional and religious elites as separate actors still design |
 | Diplomacy: relations (trust, grievance, threat), defence treaties, sanctions, crises, friend-shoring, "why" inspector; international organisations (EU, AU, ECOWAS, ASEAN, Mercosur, OPEC, OECD, BRICS, SCO) with accession, exit, suspension | implemented (Phase 3b-c, see §3.5) |
 | Armed conflict: civil and interstate wars, fighting, casualties, refugees, war damage, allies, military aid, nuclear deterrence, endings, territorial change by province, rebel-held territory, new states from secession | implemented (Phase 4, see §3.6) |
 | Education and learning: adults' schooling by cohort replacement, children's expected years, harmonised test scores; human capital in production; effects on fertility, democracy and civil-war risk | implemented (see §3.9) |
+| Ethnic groups (Ethnic Power Relations): 745 politically relevant groups with size, access to power and homeland provinces; exclusion raises civil-war risk, separatist wars start in homelands, groups gain and lose power, move with secession | implemented (see §3.10) |
 | Map colours from each country's flag, neighbours kept distinct | implemented |
 | Technology, environment, culture/ideology | design only (Phase 5); full order of remaining work in `docs/REALISM_PLAN.md` |
 
@@ -469,6 +470,37 @@ human capital in production the GDP growth error is 28% (25% without; the model 
 overshoots more in Latin America and East Asia); the macro return to schooling is contested (Pritchett 2001 against
 Cohen & Soto 2007) and is a target of the planned calibration step (A).
 
+### 3.10 Ethnic groups [implemented]
+
+Data: Ethnic Power Relations 2021 (ETH Zürich): every politically relevant ethnic group of every state with 250,000+
+people, its population share and its access to executive power (monopoly/dominant, senior or junior partner;
+powerless, discriminated or self-excluded), regional autonomy; GeoEPR settlement areas, mapped to provinces by centroid
+(420 of 745 groups have a homeland). Statuses at min(reference year, 2021); each group's last loss of power within the
+20 years before; the observed yearly rates at which excluded groups were included (1.1%) and included groups excluded
+(1.3%) in 2001-2021. Ethnic groups, not "race": see `docs/REALISM_PLAN.md`.
+
+Groups act through access to power only (Cederman, Wimmer & Min 2010). Nothing else in the model (income, health,
+schooling, fertility, behaviour) depends on ethnicity.
+
+* civil-war log-odds + 1.0 × population share of powerless groups + 2.5 × share of discriminated groups + 1.0 if a
+  group lost power within 10 years (the world rate is re-solved at t0, so these shift risk between countries);
+* a new civil war is over territory with probability 0.65 if an excluded group has a homeland (and no autonomy),
+  0.3 otherwise; the rebels recruit from that group (or the largest excluded group for wars over government), seize
+  their first province in its homeland and expand there first;
+* yearly, excluded groups are included at EPR's rate × e^(2·democracy), included ones (not dominant) excluded at EPR's
+  rate × e^(−2·democracy) × 2 under military rule, normalised at t0;
+* rebels who win a war over government bring their group into power and push the old rulers out; a peace deal over
+  territory or a war ending in self-rule gives the group autonomy (no longer a separatist base); after secession,
+  groups whose homeland lies mostly in the new state move to it, and the rebels' group rules it.
+
+Validation (`npm run conflicts`, 10 seeds × 20 years): civil-war onsets are 2.8 times as frequent in countries where
+5%+ of people are in excluded groups (literature: excluded groups ×2-3); half of new civil wars are over territory
+(UCDP: about half); 74% are rooted in an excluded group. World onsets 5.3 a year against UCDP's 4.8 (4.96 before this
+step): exclusions after rebel victories feed later wars.
+
+Limitations: one group per rebellion; group sizes are shares fixed at the start (no differential growth or
+assimilation); annexation moves provinces but not groups; EPR's statewide and dispersed groups have no homeland.
+
 ### 3.8 Optional narrative layer
 
 An LLM may later turn recorded events into prose. It receives only event records and state values and cannot write
@@ -489,7 +521,7 @@ from calendar boundary to boundary:
 every 1 Jan                  demography.yearly (cohort step → migration → transition) → economy.yearly → education.yearly
                              → religion.yearly (secularisation, indices) → diplomacy.yearly (UN position →
                                trust → crises, sanctions, alliances → trade multipliers, sanction costs)
-                             → conflict.yearly (onsets of civil and interstate wars, allies joining)
+                             → ethnic.yearly (inclusion, exclusion) → conflict.yearly (onsets of civil and interstate wars, allies joining)
                              → chronicle.yearly → history.record
 ```
 

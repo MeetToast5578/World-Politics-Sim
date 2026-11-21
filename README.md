@@ -18,11 +18,13 @@ ATOP defence treaties, sanctions, crises, trade shaped by politics); armed confl
 the end of 2023, new civil and interstate wars at UCDP's historical rates, casualties, refugees, war damage, allies,
 military aid, nuclear deterrence, peace deals, ceasefires, annexations of provinces shown on the map, rebel-held
 territory, and new states born from secession); education (adults' years of schooling, children's expected years
-and harmonised test scores, feeding productivity, fertility, democracy and civil-war risk); an event
+and harmonised test scores, feeding productivity, fertility, democracy and civil-war risk); ethnic groups from Ethnic
+Power Relations (745 groups, who holds power and who is shut out, homelands on the map), with exclusion driving
+rebellion and separatism; an event
 chronicle that records the causes of each event; pause/play/speed/step, save/load, rewind and branching timelines.
 The map is alive: country names, ripples where news happens, pulsing conflicts, front lines and occupied or rebel-held
 provinces. The interface is written for people, not modellers: plain-language news with a "why" for every event, eight main maps
-plus 24 more, a history bar to go back to any year, and a country view in tabs (overview, people, economy, politics,
+plus 25 more, a history bar to go back to any year, and a country view in tabs (overview, people, economy, politics,
 relations, and a data tab with every source and the raw model state).
 `docs/BACKTEST.md` reports how well the model reproduces 2000→2023 from 2000 data.
 

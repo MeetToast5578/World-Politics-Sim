@@ -1,6 +1,6 @@
 // Shape of public/data/baseline.json (produced by scripts/build-data.mjs).
 
-export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI' | 'ORGS' | 'FLAGS' | 'HDR' | 'HCI';
+export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI' | 'ORGS' | 'FLAGS' | 'HDR' | 'HCI' | 'EPR';
 
 /** A sourced observation: value, reference year, source. */
 export interface Obs { v: number; y: number; s: SourceId }
@@ -23,6 +23,10 @@ export interface BaselineCountry {
   /** party of the head of government (head of state in presidential systems) at the end of the reference year,
    *  with its left-right position (Wikidata P1387) and model party family; null where there is none */
   rulingParty?: { name: string; family: number; pos: number; s: SourceId } | null;
+  /** politically relevant ethnic groups at the reference year (EPR): population share, access to power (0 discriminated,
+   *  1 powerless or self-excluded, 2 junior partner or contested, 3 senior partner, 4 dominant or monopoly), regional
+   *  autonomy, homeland provinces (indices into Baseline.provinces; GeoEPR), regional = has a homeland */
+  groups?: { name: string; size: number; status: number; aut: number; regional: boolean; provinces: number[]; down?: number | null }[]; // down: last year it lost power
   /** map colour derived from the flag (FLAGS), toned for the map; new states inherit their parent's */
   colour?: string;
 }
@@ -84,6 +88,9 @@ export interface Baseline {
       active: { kind: 'interstate' | 'civil'; a: string[]; b: string[]; loc: string; start: string; goal: 'government' | 'territory'; deaths: number; name: string | null; territory?: string | null; intensity: number }[];
     };
     /** International organisations: members at the reference year (suspended: suspended at its end). */
+    /** Ethnic Power Relations: status year, and observed yearly rates at which excluded groups gain access to power
+     *  (include) and included groups lose it (exclude), per group-year over the 20 years before */
+    ethnic?: { year: number; rates: { include: number; exclude: number; groupYears: number; from: number; to: number } };
     organisations: { id: string; name: string; kind: 'trade' | 'political' | 'economic' | 'club'; url: string; members: { id: string; since: number; suspended: boolean }[]; former: { id: string; left: number }[] }[];
     /** Logistic secularisation ds/dt = r·s·(1 − s/K) fitted on the World Religion Project panel. */
     secularisation: { r: number; K: number; n: number; window: string };

@@ -19,6 +19,7 @@ import { createState, totalPop, hashState, HIST_FIELDS, type WorldState } from '
 import { initDemography, initTransitionResiduals, demographyYearly } from './systems/demography';
 import { initEconomy, initEconomyResiduals, economyQuarterly, economyYearly } from './systems/economy';
 import { initEducation, educationYearly } from './systems/education';
+import { initEthnic, ethnicYearly, rescaleGroups } from './systems/ethnic';
 import { buildTrade, type TradeNet } from './systems/trade';
 import { initReligion, religionYearly } from './systems/religion';
 import { initPolitics, politicsQuarterly } from './systems/politics';
@@ -31,7 +32,7 @@ import { initOrganisations, organisationsYearly } from './systems/organisations'
 import { initParties, seizePower } from './systems/parties';
 import { aggregate } from './systems/demography';
 
-export const RNG_STREAMS = ['economy', 'commodity', 'politics', 'diplomacy', 'conflict', 'organisations', 'parties'] as const;
+export const RNG_STREAMS = ['economy', 'commodity', 'politics', 'diplomacy', 'conflict', 'organisations', 'parties', 'ethnic'] as const;
 
 export interface SimConfig { seed: number; startDate?: string; params?: Partial<Params> }
 
@@ -72,6 +73,7 @@ export class Simulation {
     initOrganisations(this.st, baseline);
     initDiplomacy(this.st, baseline, this.params, this.trade, this.pairs);
     this.cnet = buildConflictNet(baseline);
+    initEthnic(this.st, baseline, this.params);
     initConflict(this.st, baseline, this.params, this.cnet, this.pairs);
     chronicleYearly(this.st); // establishes milestone levels at t0 without emitting
     this.recordHistory();
@@ -116,6 +118,7 @@ export class Simulation {
       religionYearly(st, this.baseline, p);
       diplomacyYearly(st, this.baseline, p, this.rngs.diplomacy, this.trade, this.pairs);
       organisationsYearly(st, this.baseline, p, this.rngs.organisations, this.pairs);
+      ethnicYearly(st, this.baseline, p, this.rngs.ethnic);
       conflictYearly(st, p, this.rngs.conflict, this.cnet, this.pairs);
       applyTradeEffects(st, p, this.trade, this.pairs); // new wars cut trust between belligerents: trade follows at once
       chronicleYearly(st);
@@ -166,8 +169,17 @@ export class Simulation {
     // extensive quantities start at zero (the transfer below moves the parent's share); p0-p2 must be zero before it
     for (const k of ['p0', 'p1', 'p2', 'K', 'gdp', 'gdpPrevQ', 'gdpPrevY', 'debt', 'milCap', 'births', 'deaths', 'netMig'] as const) f[k][c] = 0;
     for (const i of r.provinces) st.provinceOwner[i] = c;
+    const popParent = totalPop(st, parent);
     const moved = transferTerritory(st, parent, c, r.share);
     aggregate(st, c);
+    // groups whose homeland is mostly in the new state move with it; the rebels' group rules it
+    for (const g of st.groups) {
+      if (g.c !== parent || !g.home.length) continue;
+      if (g.home.filter((i) => taken.has(i)).length * 2 > g.home.length) { g.c = c; g.aut = 0; if (g.status >= 3) g.status = 1; }
+    }
+    rescaleGroups(st, parent, popParent);
+    for (const g of st.groups) if (g.c === c) g.size = Math.min(1, (g.size * popParent) / Math.max(1, totalPop(st, c))); // shares of the new state
+    if (r.group >= 0 && st.groups[r.group].c === c) st.groups[r.group].status = 4;
     // the rebel army becomes the new state's
     f.milCap[c] = 0.5 * r.share * f.milCap[parent]; f.milCap[parent] *= 1 - r.share;
     const democratic = r.u < this.params.conflict.outcome.secessionDemocratic;

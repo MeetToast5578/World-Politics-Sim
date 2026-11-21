@@ -46,6 +46,11 @@ export const DEFAULT_PARAMS = {
    *  civil: change of civil-war log-odds per year of schooling above 8 (Thyne 2006; assumption). */
   education: { returnPerYear: 0.08, replacement: 1.3, pipelineYears: 15, attainment: 0.85, learningYears: 20, warLoss: 0.08, fertility: 0.05, democracy: 0.02, civil: 0.08 },
 
+  /** Ethnic groups (systems/ethnic.ts). Base rates of inclusion and exclusion come from EPR (data build). democracy*:
+   *  log hazard change per unit of the democracy index (assumption: inclusion is far more common in democracies,
+   *  Wimmer 2013); militaryExclusion: multiplier on exclusion under military or junta rule (assumption). */
+  ethnic: { democracyInclusion: 2.0, democracyExclusion: 2.0, militaryExclusion: 2.0 },
+
   // --- economy (Solow growth with technology diffusion) ---
   /** Capital share in Cobb-Douglas output. Gollin (2002) finds ~0.3-0.4 after correcting for self-employment. */
   alpha: 0.35,
@@ -212,7 +217,12 @@ export const DEFAULT_PARAMS = {
      *  population (log), income (log), electoral autocracy ("anocracy"), unrest (instability), religious polarisation,
      *  youth bulge (Urdal 2006), conflict trap (Collier et al. 2003), a neighbour at war (contagion); liberal
      *  democracies are rarely the site of armed conflict (Hegre et al. 2001); microstates are excluded. */
-    civil: { max: 0.5, pop: 0.4, income: 0.9, anocracy: 0.6, liberal: 1.0, unrest: 3, polarisation: 0.8, youth: 4, memory: 1.5, neighbour: 0.5, minPop: 2e5 },
+    civil: { max: 0.5, pop: 0.4, income: 0.9, anocracy: 0.6, liberal: 1.0, unrest: 3, polarisation: 0.8, youth: 4, memory: 1.5, neighbour: 0.5, minPop: 2e5,
+      // ethnic exclusion (Cederman, Wimmer & Min 2010: excluded groups' onset odds ~2-3× included ones, discriminated and
+      // recently downgraded groups higher still): log-odds per population share powerless / discriminated, and for a
+      // group that lost power within downgradedYears; territorial: P(war over territory) with / without an excluded
+      // group that has a homeland (UCDP 1990-2023: about half of civil conflicts are over territory)
+      powerless: 1.0, discriminated: 2.5, downgraded: 1.0, downgradedYears: 10, territorial: [0.65, 0.3] },
     /** Interstate onset (pair-year logit; Bremer 1992 "dangerous dyads", Russett & Oneal 2001): contiguity,
      *  joint democracy, grievance (rivalry), distrust, power parity, shared alliance, nuclear deterrence. Saturates at
      *  max per pair-year: even enduring rivalries (India-Pakistan) fight a few times per half-century. */

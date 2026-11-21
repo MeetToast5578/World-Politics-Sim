@@ -27,6 +27,7 @@ import { youthShare } from './politics';
 import { religionIndices } from './religion';
 import { pairOf, allyFlags, type PairNet } from './diplomacy';
 import { seizePower } from './parties';
+import { exclusion, rebelGroup } from './ethnic';
 
 const MONTH = 1 / 12;
 const logistic = (x: number) => 1 / (1 + Math.exp(-x));
@@ -98,7 +99,14 @@ function civilZ(st: WorldState, p: Params, net: ConflictNet, c: number): number 
   const nbrWar = net.nbrs[c].some((j) => f.warLoad[j] > 0.5) ? 1 : 0;
   return k.pop * Math.log(totalPop(st, c) / 1e7) - k.income * Math.log(gdpPppPc(st, c) / 5000) + k.anocracy * (f.regime[c] === 1 ? 1 : 0) - k.liberal * (f.regime[c] === 3 ? 1 : 0)
     + k.unrest * (f.unrest[c] - 0.3) + k.polarisation * f.relPolar[c] + k.youth * (youthShare(st, c) - 0.3) + k.memory * f.warMem[c] + k.neighbour * nbrWar
-    - p.education.civil * (f.eduYears[c] - 8); // schooling lowers civil-war risk beyond income (Thyne 2006)
+    - p.education.civil * (f.eduYears[c] - 8) // schooling lowers civil-war risk beyond income (Thyne 2006)
+    + ethnicZ(st, k, c);
+}
+
+/** Ethnic exclusion term of the civil-war log-odds. */
+function ethnicZ(st: WorldState, k: Params['conflict']['civil'], c: number): number {
+  const e = exclusion(st, c, k.downgradedYears);
+  return k.powerless * e.powerless + k.discriminated * e.discriminated + k.downgraded * e.downgraded;
 }
 
 /** Nuclear umbrella: own arsenal (1) or a defence treaty with a nuclear state (0.5). */
@@ -142,7 +150,7 @@ export function initConflict(st: WorldState, b: Baseline, p: Params, net: Confli
     st.wars.push({
       id: st.g.warSeq++, kind: a.kind, a: a.kind === 'civil' ? [loc, ...A.filter((x) => x !== loc)] : A, b: B, loc,
       start: parseDate(a.start), goal: a.goal, name: a.name, territory: a.territory ?? null, sev: Math.log(Math.max(25, a.deaths)), lvl: 0, score: 0,
-      occ: 0, held: [],
+      occ: 0, held: [], group: a.kind === 'civil' ? rebelGroup(st, loc, a.goal === 'territory') : -1,
       deaths: 0, rate: Math.max(25, a.deaths), peak: Math.max(25, a.deaths),
     });
     f.warMem[loc] = 1;
@@ -243,6 +251,7 @@ function updateHeld(st: WorldState, net: ConflictNet, w: War): void {
   for (const i of mine) W += net.provW[i];
   if (W <= 0) { w.held.length = 0; return; }
   const held = new Set(w.held), side = new Set(w.kind === 'interstate' ? w.a : []); // rebels have no territory outside
+  const home = w.kind === 'civil' && w.group != null && w.group >= 0 ? new Set(st.groups[w.group].home) : null; // rebels gain most easily at home
   // separatists never take the heartland (the most populous province); rebels fighting for the government may
   let capital = -1;
   if (w.kind === 'civil' && w.goal === 'territory') for (const i of mine) if (capital < 0 || net.provW[i] > net.provW[capital]) capital = i;
@@ -255,6 +264,7 @@ function updateHeld(st: WorldState, net: ConflictNet, w: War): void {
       if (held.has(i) || i === capital) continue;
       let sc = 0;
       for (const j of net.provNb[i]) if (held.has(j) || side.has(own[j])) sc++;
+      if (sc && home?.has(i)) sc += 3;
       if (sc > bestScore) { best = i; bestScore = sc; }
     }
     if (best < 0 && w.kind === 'civil') best = rebelSeed(st, net, w, held);
@@ -278,8 +288,11 @@ function rebelSeed(st: WorldState, net: ConflictNet, w: War, held: Set<number>):
   for (const i of mine) if (core < 0 || net.provW[i] > net.provW[core]) core = i;
   if (core < 0) return -1;
   const [lo0, la0] = net.provC[core], k = Math.cos((la0 * Math.PI) / 180);
+  // a rebellion rooted in an ethnic group starts in its homeland
+  const home = w.group != null && w.group >= 0 ? new Set(st.groups[w.group].home) : null;
+  const inHome = home && mine.some((i) => home.has(i) && !held.has(i) && i !== core);
   for (const i of mine) {
-    if (held.has(i) || i === core) continue;
+    if (held.has(i) || i === core || (inHome && !home!.has(i))) continue;
     const dd = ((net.provC[i][0] - lo0) * k) ** 2 + (net.provC[i][1] - la0) ** 2;
     if (dd > d) { d = dd; best = i; }
   }
@@ -334,10 +347,10 @@ function changeGovernment(st: WorldState, c: number) {
 
 /** Rebels who won a war over territory ask for a state of their own (handled by the simulation, which owns the
  *  structures a new country must be added to). */
-export interface SecessionRequest { parent: number; provinces: number[]; share: number; u: number; territory: string | null }
+export interface SecessionRequest { parent: number; provinces: number[]; share: number; u: number; territory: string | null; group: number }
 
 function endWar(st: WorldState, p: Params, net: ConflictNet, w: War, u: number, out: SecessionRequest[], uSec = 1, forceCeasefire = false): void {
-  const f = st.f, x = { score: w.score, deaths: w.deaths, years: (st.day - w.start) / 365.25, occ: w.occ, id: w.id };
+  const f = st.f, x = { score: w.score, deaths: w.deaths, years: (st.day - w.start) / 365.25, occ: w.occ, id: w.id, group: w.group ?? -1 };
   const loser = w.loc, att = w.a[0], O = p.conflict.outcome;
   if (w.kind === 'civil') {
     if (w.score > O.victory) emit(st, { k: 'civil_war_won', c: loser, v: w.deaths, x });
@@ -346,15 +359,25 @@ function endWar(st: WorldState, p: Params, net: ConflictNet, w: War, u: number, 
         const democratic = u < 0.25;
         emit(st, { k: 'rebels_won', c: loser, v: democratic ? 1 : 0, x });
         changeGovernment(st, loser);
+        // the rebels' group takes power; the groups that held it lose it
+        if (w.group != null && w.group >= 0 && st.groups[w.group].c === loser) {
+          for (const g of st.groups) if (g.c === loser && g.status >= 3) { g.status = 1; g.down = st.day; }
+          st.groups[w.group].status = 3;
+        }
         if (democratic) { f.regime[loser] = 2; f.demo[loser] = Math.max(f.demo[loser], 0.5); f.nextElection[loser] = st.day + 365; }
         else { f.regime[loser] = 0; f.demo[loser] *= 0.6; f.nextElection[loser] = -1; seizePower(st, loser, false); }
       } else {
         const share = heldShare(st, net, w);
-        if (w.held.length && share >= 0.005 && uSec < O.secession) out.push({ parent: loser, provinces: w.held.slice(), share, u, territory: w.territory ?? null });
-        else { emit(st, { k: 'autonomy_won', c: loser, v: w.deaths, x }); f.unrest[loser] = Math.max(0.05, f.unrest[loser] * 0.8); }
+        if (w.held.length && share >= 0.005 && uSec < O.secession) out.push({ parent: loser, provinces: w.held.slice(), share, u, territory: w.territory ?? null, group: w.group ?? -1 });
+        else {
+          emit(st, { k: 'autonomy_won', c: loser, v: w.deaths, x }); f.unrest[loser] = Math.max(0.05, f.unrest[loser] * 0.8);
+          if (w.group != null && w.group >= 0) st.groups[w.group].aut = 1;
+        }
       }
     } else if (u < O.peace) {
       emit(st, { k: 'peace_deal', c: loser, v: w.deaths, x });
+      // settlements of separatist wars usually grant self-rule; of wars over government, a share of power
+      if (w.group != null && w.group >= 0 && st.groups[w.group].c === loser) { if (w.goal === 'territory') st.groups[w.group].aut = 1; else st.groups[w.group].status = Math.max(2, st.groups[w.group].status); }
       f.demo[loser] = Math.min(0.95, f.demo[loser] + 0.02); f.unrest[loser] = Math.max(0.05, f.unrest[loser] * 0.8);
     } else emit(st, { k: 'conflict_faded', c: loser, v: w.deaths, x });
   } else {
@@ -470,10 +493,13 @@ export function conflictYearly(st: WorldState, p: Params, rng: Rng, net: Conflic
     const z = civilZ(st, p, net, c) + st.g.offCivil;
     if (u >= P.civil.max * logistic(z)) continue;
     const sev = Math.log(P.deaths.civilMedian) + P.deaths.civilSd * uSev;
-    st.wars.push({ id: st.g.warSeq++, kind: 'civil', a: [c], b: [], loc: c, start: st.day, goal: uGoal < 0.5 ? 'territory' : 'government', name: null,
-      sev, lvl: 0, score: 0, occ: 0, held: [], deaths: 0, rate: Math.exp(sev), peak: Math.exp(sev) });
+    // separatism needs a people with a homeland: likelier where an excluded group has one
+    const homeland = rebelGroup(st, c, true), territorial = uGoal < P.civil.territorial[homeland >= 0 ? 0 : 1];
+    const group = territorial ? homeland : rebelGroup(st, c, false);
+    st.wars.push({ id: st.g.warSeq++, kind: 'civil', a: [c], b: [], loc: c, start: st.day, goal: territorial ? 'territory' : 'government', name: null,
+      sev, lvl: 0, score: 0, occ: 0, held: [], deaths: 0, rate: Math.exp(sev), peak: Math.exp(sev), group });
     f.warMem[c] = 1;
-    emit(st, { k: 'civil_war_started', c, v: Math.exp(sev), x: { unrest: f.unrest[c], income: gdpPppPc(st, c), regime: f.regime[c], polar: f.relPolar[c], hazard: P.civil.max * logistic(z) } });
+    emit(st, { k: 'civil_war_started', c, v: Math.exp(sev), x: { unrest: f.unrest[c], income: gdpPppPc(st, c), regime: f.regime[c], polar: f.relPolar[c], hazard: P.civil.max * logistic(z), group } });
   }
   // interstate wars
   const ally = allyFlags(st, pn), umb = umbrella(st, net), fighting = interstateFlags(st), can = canFight(st, p, net); // one interstate war at a time

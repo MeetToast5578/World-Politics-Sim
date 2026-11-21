@@ -30,6 +30,7 @@ const AGE_GROUPS = ['0004', '0509', '1014', '1519', '2024', '2529', '3034', '353
 const EARTH_R_KM = 6371.0088;
 
 const SOURCES = {
+  EPR: { name: 'Ethnic Power Relations 2021 and GeoEPR 2021 (Vogt et al. 2015, ETH Zürich)', url: 'https://icr.ethz.ch/data/epr/', license: 'Free for research and non-commercial use with citation' },
   NE: { name: 'Natural Earth 1:50m Admin 0 Countries (v5.x)', url: 'https://www.naturalearthdata.com/', license: 'Public domain' },
   WDI: { name: 'World Bank, World Development Indicators', url: 'https://data.worldbank.org/', license: 'CC BY 4.0 (some third-party series, e.g. SIPRI military data, carry their own terms)' },
   WGI: { name: 'World Bank, Worldwide Governance Indicators', url: 'https://www.worldbank.org/en/publication/worldwide-governance-indicators', license: 'CC BY 4.0' },
@@ -594,6 +595,74 @@ async function education() {
   return { schoolYears: mys, expectedYears: latest('eys'), learning, schoolTrend, expectedYearsEarly: latest('eys', early, early - 5), expectedYearsLag: latest('eys', lagHi, lagHi - 5) };
 }
 
+// --- Ethnic groups: Ethnic Power Relations 2021 (politically relevant groups, size, access to power) and GeoEPR
+// (settlement areas) -------------------------------------------------------------------------------------------
+const EPR_STATUS = { DISCRIMINATED: 0, POWERLESS: 1, 'SELF-EXCLUSION': 1, 'JUNIOR PARTNER': 2, 'STATE COLLAPSE': 2, 'SENIOR PARTNER': 3, DOMINANT: 4, MONOPOLY: 4 };
+const parseCsv = (txt) => txt.trim().split(/\r?\n/).map((l) => {
+  const out = []; let cur = '', q = false;
+  for (const ch of l) { if (ch === '"') q = !q; else if (ch === ',' && !q) { out.push(cur); cur = ''; } else cur += ch; }
+  out.push(cur); return out;
+});
+/** Planar point-in-polygon (even-odd) over a GeoJSON Polygon/MultiPolygon; fine at province-centroid scale. */
+function inPolygon(geom, [x, y]) {
+  const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+  let inside = false;
+  for (const poly of polys) for (const ring of poly) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+  }
+  return inside;
+}
+async function ethnicGroups(countries, regions, provinces) {
+  const cw = await cowCrosswalk(countries), gw = (x) => GW_FIX[+x] ?? cw.num(x);
+  const [h, ...rows] = parseCsv(await cached('EPR-2021.csv', 'https://icr.ethz.ch/data/epr/core/EPR-2021.csv'));
+  const k = Object.fromEntries(h.map((x, i) => [x, i]));
+  const Y = Math.min(REF_YEAR, 2021); // EPR 2021 ends in 2021: later reference years use 2021 statuses
+  const ids = new Set(countries.map((c) => c.id)), byCountry = {}, unmatched = new Set();
+  // yearly status of every group over the 21 years up to Y, for the base rates of inclusion and exclusion
+  const series = {};
+  for (const r of rows) {
+    const st = EPR_STATUS[r[k.status]], from = +r[k.from], to = +r[k.to];
+    if (st === undefined) continue; // IRRELEVANT: not politically relevant
+    for (let y = Math.max(from, Y - 21); y <= Math.min(to, Y); y++) (series[r[k.gwgroupid]] ??= {})[y] = st;
+    if (from > Y || to < Y) continue;
+    const id = gw(r[k.gwid]);
+    if (!id || !ids.has(id)) { unmatched.add(r[k.statename]); continue; }
+    (byCountry[id] ??= []).push({ name: r[k.group], gid: +r[k.gwgroupid], size: +r[k.size], status: st, aut: r[k.reg_aut] === 'true' ? 1 : 0, provinces: [] });
+  }
+  let inc = 0, exc = 0, atRiskEx = 0, atRiskIn = 0;
+  for (const s of Object.values(series)) for (let y = Y - 20; y <= Y; y++) {
+    if (s[y] == null || s[y - 1] == null) continue;
+    if (s[y - 1] <= 1) { atRiskEx++; if (s[y] >= 2) inc++; } else { atRiskIn++; if (s[y] <= 1) exc++; }
+  }
+  // homelands: province centroids inside the group's GeoEPR polygon (regional groups only)
+  const geo = JSON.parse(await cached('GeoEPR-2021.geojson', 'https://icr.ethz.ch/data/epr/geoepr/GeoEPR-2021.geojson'));
+  const ownerOf = Object.fromEntries(regions.map((r) => [r.id, r.owner]));
+  const provOf = {};
+  provinces.forEach((p, i) => (provOf[ownerOf[p.region]] ??= []).push(i));
+  const REGIONAL = new Set(['Regionally based', 'Regional & urban', 'Aggregate']);
+  for (const f of geo.features) {
+    const p = f.properties;
+    if (p.from > Y || p.to < Y || !REGIONAL.has(p.type) || !f.geometry) continue;
+    const id = gw(p.gwid), g = byCountry[id]?.find((x) => x.gid === p.gwgroupid);
+    if (!g) continue;
+    for (const i of provOf[id] ?? []) if (inPolygon(f.geometry, provinces[i].centroid)) g.provinces.push(i);
+  }
+  // last year each group lost access to power (included → excluded), for the "recently downgraded" risk
+  for (const gs of Object.values(byCountry)) for (const g of gs) {
+    const s = series[g.gid] ?? {};
+    let down = null;
+    for (let y = Y - 20; y <= Y; y++) if (s[y] != null && s[y - 1] != null && s[y - 1] >= 2 && s[y] <= 1) down = y;
+    g.down = down; g.regional = g.provinces.length > 0; delete g.gid;
+  }
+  return {
+    byCountry, year: Y, unmatched: [...unmatched],
+    rates: { include: +(inc / atRiskEx).toFixed(4), exclude: +(exc / atRiskIn).toFixed(4), groupYears: atRiskEx + atRiskIn, from: Y - 20, to: Y },
+  };
+}
+
 // Standard deviation of annual real GDP growth over VOL_FROM..VOL_TO (excludes the COVID shock). Needs >= 10 observations.
 async function growthVolatility() {
   const txt = await cached(`wb_growth_${VOL_FROM}_${VOL_TO}.json`, `https://api.worldbank.org/v2/country/all/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=20000&date=${VOL_FROM}:${VOL_TO}&source=2`);
@@ -956,6 +1025,9 @@ async function main() {
   }
 
   const prov = await buildProvinces(cached, regions, countries);
+  const eth = await ethnicGroups(countries, regions, prov.provinces);
+  for (const c of countries) c.groups = eth.byCountry[c.id] ?? [];
+  console.log('ethnic groups', Object.values(eth.byCountry).flat().length, 'in', Object.keys(eth.byCountry).length, 'countries; rates', JSON.stringify(eth.rates), 'unmatched', eth.unmatched.join('; '));
 
   // map colours from flags; land neighbours (between entities) are kept distinguishable
   const ownerOf = Object.fromEntries(regions.map((r) => [r.id, r.owner]));
@@ -971,7 +1043,7 @@ async function main() {
       indicators: Object.fromEntries(Object.entries(allFields).map(([k, [s, code, agg]]) => [k, { source: s, code, agg }])),
       curves, coverage, baseRates: { ...vd.baseRates, alliances: al.rates }, secularisation,
       diplomacy: { treaties: al.treaties, atopYear: al.atopYear, allianceUpdates: al.notes, sanctions, sanctionsAsOf: sanctionYear, foreignPolicy, grievances },
-      conflict, organisations: orgs,
+      conflict, organisations: orgs, ethnic: { year: eth.year, rates: eth.rates },
       religions: RELIGIONS.map(([, label, family]) => ({ label, family })),
     },
     countries: countries.map(({ members, ...c }) => c),
