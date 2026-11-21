@@ -18,6 +18,7 @@ import { civilFromDays, nextMonthStart } from './calendar';
 import { createState, totalPop, hashState, HIST_FIELDS, type WorldState } from './state';
 import { initDemography, initTransitionResiduals, demographyYearly } from './systems/demography';
 import { initEconomy, initEconomyResiduals, economyQuarterly, economyYearly } from './systems/economy';
+import { initEducation, educationYearly } from './systems/education';
 import { buildTrade, type TradeNet } from './systems/trade';
 import { initReligion, religionYearly } from './systems/religion';
 import { initPolitics, politicsQuarterly } from './systems/politics';
@@ -59,6 +60,7 @@ export class Simulation {
     initEconomy(this.st, baseline, this.params);
     initTransitionResiduals(this.st, baseline);
     initEconomyResiduals(this.st, baseline);
+    initEducation(this.st, baseline, this.params);
     const sanc = baselineSanction(baseline);
     this.trade = buildTrade(baseline, this.st.f.gdp, this.params, (i, j) => 1 - this.params.diplomacy.sanctions.tradeCut * sanc(i, j));
     this.pairs = buildPairs(baseline, this.trade, this.st.f.milCap, this.params);
@@ -110,6 +112,7 @@ export class Simulation {
     if (m === 1) {
       demographyYearly(st, this.baseline, p);
       economyYearly(st, this.baseline, p, this.trade);
+      educationYearly(st, this.baseline, p);
       religionYearly(st, this.baseline, p);
       diplomacyYearly(st, this.baseline, p, this.rngs.diplomacy, this.trade, this.pairs);
       organisationsYearly(st, this.baseline, p, this.rngs.organisations, this.pairs);
@@ -132,6 +135,7 @@ export class Simulation {
     push('debtRatio', (c) => f.debt[c] / f.gdp[c]);
     push('milCap', (c) => f.milCap[c]);
     push('old', (c) => f.p2[c] / totalPop(this.st, c));
+    push('school', (c) => f.eduYears[c]);
   }
 
   /** Grow the structures derived from the baseline (trade, pairs, conflict geography) by a new state.

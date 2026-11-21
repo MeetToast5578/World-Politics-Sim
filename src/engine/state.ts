@@ -30,6 +30,10 @@ export const FIELDS = [
   'realParty',
   // diplomacy: foreign-policy (UN voting) position, sanction pressure (share of world GDP sanctioning, × intensity)
   'fp', 'fp0', 'sanctionLoad', 'demoPrevY', 'unSanction',
+  // education (systems/education.ts): adults' mean years of schooling (25+) and its start value, children's expected years
+  // and residual, expected years ~15 years ago (pipeline), schooling of this year's 25-year-olds, test scores of pupils
+  // and of the adult population, test-score residual
+  'eduYears', 'eduYears0', 'eduExp', 'eduExpResid', 'eduPipe', 'eduEntry0', 'learn', 'learnAdult', 'learnResid',
   // governance (static in Phase 1, WGI scale ≈ -2.5..2.5)
   'wgiVoice', 'wgiStability', 'wgiEffectiveness', 'wgiRuleOfLaw', 'wgiCorruption',
 ] as const;
@@ -73,7 +77,7 @@ export const AGES = 101;
 export const cohortIndex = (c: number, sex: number) => (c * 2 + sex) * AGES;
 
 /** Yearly history series recorded for charts (Float32 to halve memory). */
-export const HIST_FIELDS = ['pop', 'gdp', 'gdpPc', 'tfr', 'lifeExp', 'debtRatio', 'milCap', 'old'] as const;
+export const HIST_FIELDS = ['pop', 'gdp', 'gdpPc', 'tfr', 'lifeExp', 'debtRatio', 'milCap', 'old', 'school'] as const;
 export type HistField = (typeof HIST_FIELDS)[number];
 
 export interface SimEvent {

@@ -10,6 +10,7 @@ import { economyQuarterly, interestRate } from '../src/engine/systems/economy';
 import { coupHazard } from '../src/engine/systems/politics';
 import { applyTradeEffects, pairOf } from '../src/engine/systems/diplomacy';
 import { transferTerritory } from '../src/engine/systems/conflict';
+import { educationYearly, humanCapital } from '../src/engine/systems/education';
 
 const b = loadBaseline();
 const years = (sim: Simulation, n: number) => sim.advanceTo(addMonths(sim.st.day, 12 * n));
@@ -285,6 +286,27 @@ describe('armed conflict', () => {
     expect(deathRate / N).toBeGreaterThan(0.3 * C.battleDeathsPerYear);
     expect(deathRate / N).toBeLessThan(3 * C.battleDeathsPerYear);
   }, 240000);
+});
+
+describe('education', () => {
+  it('starts from the data and keeps output unchanged at t0 (human capital is taken out of TFP)', () => {
+    const sim = new Simulation(b, { seed: 1 });
+    const c = sim.st.ids.indexOf('IND'), f = sim.st.f;
+    expect(f.eduYears[c]).toBeCloseTo(b.countries[c].fields.schoolYears!.v, 6);
+    expect(f.learn[c]).toBeCloseTo(b.countries[c].fields.learning!.v, 6);
+    expect(humanCapital(sim.st, sim.params, c)).toBeGreaterThan(1);
+    expect(f.gdp[c]).toBeCloseTo(b.countries[c].fields.gdp!.v, -3);
+  });
+  it('adults catch up with the schooling of younger generations; war keeps children out of school', () => {
+    const sim = new Simulation(b, { seed: 1 });
+    const niger = sim.st.ids.indexOf('NER'), y0 = sim.st.f.eduYears[niger];
+    years(sim, 30);
+    expect(sim.st.f.eduYears[niger]).toBeGreaterThan(y0); // re-read: new states replace the field arrays
+    const peace = new Simulation(b, { seed: 1 }), war = new Simulation(b, { seed: 1 }), c = peace.st.ids.indexOf('KEN');
+    war.st.f.warLoad[c] = 3;
+    educationYearly(peace.st, peace.baseline, peace.params); educationYearly(war.st, war.baseline, war.params);
+    expect(war.st.f.eduExp[c]).toBeLessThan(peace.st.f.eduExp[c] - 0.1); // one year of a 15-year adjustment
+  });
 });
 
 describe('invariants', () => {

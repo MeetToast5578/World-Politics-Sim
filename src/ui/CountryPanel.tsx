@@ -101,6 +101,12 @@ export function CountryPanel({ baseline: b, detail, events, name, weight, coupRi
             <Stat label="Migration last year" value={`${f.netMig >= 0 ? '+' : '−'}${fmtNum(Math.abs(f.netMig))}`} note={f.netMig >= 0 ? 'more arriving than leaving' : 'more leaving than arriving'} />
           </div>
           <Pyramid f={detail.pyramid.f} m={detail.pyramid.m} />
+          <h3>Education</h3>
+          <div className="stats">
+            <Stat label="Adults' schooling" value={`${f.eduYears.toFixed(1)} years`} arrow={trend(h.school)} note="average, age 25 and over" />
+            <Stat label="Children's schooling" value={`${f.eduExp.toFixed(1)} years`} note="expected for a child starting today" />
+            <Stat label="Learning" value={f.learn.toFixed(0)} note={`test scores; ${f.learn >= 550 ? 'among the best' : f.learn >= 475 ? 'above average' : f.learn >= 400 ? 'below the rich-country average' : 'many pupils lack basic skills'} (300-625)`} />
+          </div>
           <h3>Religion</h3>
           <ul className="bars">
             {detail.religion.map((s, i) => [s, i] as const).filter(([s]) => s >= 0.01).sort((x, y) => y[0] - x[0]).slice(0, 8).map(([s, i]) => (
@@ -246,6 +252,9 @@ function DataTab({ b, detail }: { b: Baseline; detail: CountryDetail }) {
     ['Inflation %', f.inflation.toFixed(1), fmtNum(bf.inflation?.v ?? NaN), 'inflation'],
     ['Government debt % of GDP', (100 * f.debt / f.gdp).toFixed(0), fmtNum(bf.govDebt?.v ?? NaN), 'govDebt'],
     ['Military spending % of GDP', bf.milexShare ? (100 * f.milexShare).toFixed(1) : '—', bf.milexShare ? fmtNum(bf.milexShare.v) : '—', 'milexShare'],
+    ["Adults' years of schooling", f.eduYears.toFixed(1), fmtNum(bf.schoolYears?.v ?? NaN), 'schoolYears'],
+    ["Children's expected years of school", f.eduExp.toFixed(1), fmtNum(bf.expectedYears?.v ?? NaN), 'expectedYears'],
+    ['Learning (harmonised test scores)', f.learn.toFixed(0), fmtNum(bf.learning?.v ?? NaN), 'learning'],
     ['Democracy score (V-Dem)', f.demo.toFixed(2), fmtNum(bf.vdemEdi?.v ?? NaN), 'vdemEdi'],
     ['UN voting position', f.fp.toFixed(2), fmtNum(bf.unIdeal?.v ?? NaN), 'unIdeal'],
   ];

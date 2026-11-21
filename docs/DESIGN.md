@@ -17,12 +17,14 @@ Sections marked **[implemented]** describe running code; **[design]** describes 
 | Backtest 2000→2023 with naive benchmarks, ensemble coverage, sensitivity analysis | implemented (`docs/BACKTEST.md`) |
 | Military capital stock (perpetual inventory of spending) | implemented; sets fighting strength (§3.6) |
 | Chronicle/news events carrying their causal inputs | implemented |
-| Observer UI: light, plain-language atlas of provinces with country names, animated news ripples, pulsing conflicts, marching front lines, occupied and rebel-held hatching; 29 map modes (8 featured), history bar with rewind, tabbed country view, world summary, news with explanations | implemented |
+| Observer UI: light, plain-language atlas of provinces with country names, animated news ripples, pulsing conflicts, marching front lines, occupied and rebel-held hatching; 32 map modes (8 featured), history bar with rewind, tabbed country view, world summary, news with explanations | implemented |
 | Religion: 31 denominations/sects per country, secularisation, fractionalisation and polarisation | implemented (Phase 3, see §3.3) |
 | Domestic politics: democracy index and regime, approval, legitimacy, unrest, elections, coups, uprisings, regime change; parties (eight families, real ruling party at the start), coalitions, military and council rule | implemented (Phase 3, see §3.4); business, regional and religious elites as separate actors still design |
 | Diplomacy: relations (trust, grievance, threat), defence treaties, sanctions, crises, friend-shoring, "why" inspector; international organisations (EU, AU, ECOWAS, ASEAN, Mercosur, OPEC, OECD, BRICS, SCO) with accession, exit, suspension | implemented (Phase 3b-c, see §3.5) |
 | Armed conflict: civil and interstate wars, fighting, casualties, refugees, war damage, allies, military aid, nuclear deterrence, endings, territorial change by province, rebel-held territory, new states from secession | implemented (Phase 4, see §3.6) |
-| Technology, environment, culture/ideology | design only (Phase 5) |
+| Education and learning: adults' schooling by cohort replacement, children's expected years, harmonised test scores; human capital in production; effects on fertility, democracy and civil-war risk | implemented (see §3.9) |
+| Map colours from each country's flag, neighbours kept distinct | implemented |
+| Technology, environment, culture/ideology | design only (Phase 5); full order of remaining work in `docs/REALISM_PLAN.md` |
 
 Regime, democracy, approval, legitimacy, unrest, religion, relations, alliances and sanctions now evolve in the
 simulation, and so do armed conflicts (starting from the 33 under way at the end of 2023). The constitutional form (Wikidata) and WGI governance scores remain static
@@ -435,6 +437,38 @@ with no historical analogue (about one in 100 interstate wars).
 * Society: distributions (not scalars) of attitudes per cohort; generational replacement drives slow change; material
   conditions, education, and media environment shift the distribution.
 
+### 3.9 Education and learning [implemented]
+
+Data: adults' mean years of schooling (age 25+) and children's expected years of school from the UNDP Human
+Development Report 2025 time series (Barro-Lee and UNESCO based); harmonised test scores (PISA, TIMSS, PIRLS and
+regional tests on one 300-625 scale) from the World Bank Human Capital Index. Test scores, not national "IQ" tables:
+see `docs/REALISM_PLAN.md` for why.
+
+Yearly (`systems/education.ts`):
+
+* expected years relax toward their income curve (with the curve drift measured over the decade before the start,
+  as for fertility: schooling spread faster than income in 1990-2010) plus a fading residual, times
+  e^(−0.08·warLoad) (war keeps children out of school);
+* test scores relax toward their income curve plus residual with a 20-year time constant;
+* adults' schooling changes by cohort replacement: Δyears = r·(entrants − years), r = 1.3 × the share of 25-year-olds
+  in the 25+ population (the extra 0.3 stands for older, less-schooled adults dying). Entrants' schooling at the
+  start is set so the stock follows its observed trend of the previous ten years, then moves with 0.85 × the change of
+  a 15-year pipeline that starts from expected years 15 years before the start (HDR) and follows today's;
+* adults' learning is replaced the same way.
+
+Effects: human capital per worker h = exp(0.08 · years · learning/625) (learning-adjusted years; 8% return per
+year as in the Human Capital Index) enters production Y = A K^α (hL)^(1−α); TFP is calibrated net of h at the start,
+and the frontier growth rate excludes the share of rich-country growth that came from rising schooling. Schooling
+gained since the start lowers fertility (log TFR −0.05 per year) and raises the long-run democracy level (+0.02 per
+year), and schooling above 8 years lowers civil-war log-odds (−0.08 per year; Thyne 2006).
+
+Validation (2000→2023, `docs/BACKTEST.md`): adults' schooling median error 0.62 years against 1.00 for the 1990s
+linear trend; expected years 1.21 against 2.23 for no change. Both are biased low: the expansion of schooling in the
+poorest countries after 2000 (Education for All, Millennium Development Goals) was faster than income predicts. With
+human capital in production the GDP growth error is 28% (25% without; the model already overshot growth and now
+overshoots more in Latin America and East Asia); the macro return to schooling is contested (Pritchett 2001 against
+Cohen & Soto 2007) and is a target of the planned calibration step (A).
+
 ### 3.8 Optional narrative layer
 
 An LLM may later turn recorded events into prose. It receives only event records and state values and cannot write
@@ -452,7 +486,7 @@ from calendar boundary to boundary:
 1 Jan / Apr / Jul / Oct      economy.quarterly (oil price → TFP → domestic cycles → gaps → output, prices, debt)
                              → politics.quarterly (approval → legitimacy → unrest → elections → coups → uprisings
                                → regime categories) → chronicle.quarterly
-every 1 Jan                  demography.yearly (cohort step → migration → transition) → economy.yearly
+every 1 Jan                  demography.yearly (cohort step → migration → transition) → economy.yearly → education.yearly
                              → religion.yearly (secularisation, indices) → diplomacy.yearly (UN position →
                                trust → crises, sanctions, alliances → trade multipliers, sanction costs)
                              → conflict.yearly (onsets of civil and interstate wars, allies joining)

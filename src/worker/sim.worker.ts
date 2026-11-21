@@ -48,7 +48,7 @@ function diplomacyDetail(c: number) {
 function metrics(): Record<string, number[]> {
   const st = sim.st, { f, n, history } = st;
   const out: Record<string, number[]> = { pop: [], gdp: [], gdpPc: [], growth: [], tfr: [], lifeExp: [], old: [], debt: [], mil: [], milexShare: [], effectiveness: [], voice: [], unemp: [], inflation: [], trade: [], agri: [], oilExp: [],
-    demo: [], regime: [], approval: [], unrest: [], coupRisk: [], relPolar: [], nonrel: [], majorRel: [], relSel: [], sanctionLoad: [], bloc: [], war: [], tradeBloc: [], ideology: [] };
+    demo: [], regime: [], approval: [], unrest: [], coupRisk: [], relPolar: [], nonrel: [], majorRel: [], relSel: [], sanctionLoad: [], bloc: [], war: [], tradeBloc: [], ideology: [], school: [], eys: [], learn: [] };
   // trade bloc: first full membership among EU, ASEAN, Mercosur, ECOWAS, AU (index into st.orgIds); −2 suspended; −1 none
   const blocOrder = ['EU', 'ASEAN', 'MERCOSUR', 'ECOWAS', 'AU'].map((id) => st.orgIds.indexOf(id)).filter((o) => o >= 0);
   // war status: 3 fighting another country, 2 civil war (1,000+ battle deaths a year), 1 smaller armed conflict, 0 peace
@@ -68,6 +68,7 @@ function metrics(): Record<string, number[]> {
     out.growth.push(H >= 2 ? g[(H - 1) * n + c] / g[(H - 2) * n + c] - 1 : NaN);
     out.tfr.push(f.tfr[c]);
     out.lifeExp.push(f.lifeExp[c]);
+    out.school.push(f.eduYears[c]); out.eys.push(f.eduExp[c]); out.learn.push(f.learn[c]);
     out.old.push(f.p2[c] / P);
     out.debt.push(f.debt[c] / f.gdp[c]);
     const noMilData = !sim.baseline.countries[c].fields.milexShare; // shown as "no data", not as zero

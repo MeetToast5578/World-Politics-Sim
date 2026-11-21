@@ -38,6 +38,8 @@ const SOURCES = {
   NE_EST: { name: 'Natural Earth POP_EST / GDP_MD attribute (fallback)', url: 'https://www.naturalearthdata.com/', license: 'Public domain' },
   IMPUTED: { name: 'Imputed: median of countries in the same World Bank region', url: '', license: 'Model assumption' },
   DERIVED: { name: 'Derived from geometry (Natural Earth 1:50m)', url: '', license: 'Public domain' },
+  HDR: { name: 'UNDP Human Development Report 2025, composite indices time series (mean and expected years of schooling, from Barro-Lee, UNESCO UIS and others)', url: 'https://hdr.undp.org/data-center/documentation-and-downloads', license: 'CC BY 3.0 IGO' },
+  HCI: { name: 'World Bank Human Capital Index (harmonised test scores, Patrinos & Angrist)', url: 'https://www.worldbank.org/en/publication/human-capital', license: 'CC BY 4.0' },
   FLAGS: { name: 'Flag images, flagcdn.com (rendered from Wikimedia Commons flags), used only to derive map colours', url: 'https://flagcdn.com/', license: 'Public domain (national flags)' },
   VDEM: { name: 'V-Dem v14 via Our World in Data: Electoral Democracy Index, Regimes of the World', url: 'https://ourworldindata.org/democracy', license: 'CC BY-SA 4.0 (V-Dem); derived fields of baseline.json inherit share-alike' },
   WRP: { name: 'World Religion Project, national data (Maoz & Henderson 2013), via Correlates of War', url: 'https://correlatesofwar.org/data-sets/world-religion-data/', license: 'Free for research use with citation (COW terms)' },
@@ -556,6 +558,42 @@ async function wbIndicator(code, source, stat = 'latest', from = MIN_YEAR, to = 
   return best;
 }
 
+// Education: adults' mean years of schooling (25+, Barro-Lee based) and children's expected years from the UNDP
+// Human Development Report time series; harmonised test scores (learning) from the World Bank Human Capital Index.
+async function education() {
+  const [h, ...rows] = (await cached('hdr25.csv', 'https://hdr.undp.org/sites/default/files/2025_HDR/HDR25_Composite_indices_complete_time_series.csv'))
+    .trim().split(/\r?\n/).map((l) => l.replace(/"[^"]*"/g, 'x').split(','));
+  const col = Object.fromEntries(h.map((k, i) => [k, i]));
+  const latest = (prefix, hi = REF_YEAR, lo = MIN_YEAR) => {
+    const out = {};
+    for (const r of rows) for (let y = hi; y >= lo; y--) {
+      const v = r[col[`${prefix}_${y}`]];
+      if (v !== undefined && v !== '') { out[r[0]] = { v: +v, y }; break; }
+    }
+    return out;
+  };
+  // HCI test scores exist for 2010-2020 only: the latest up to the reference year, or the earliest (2010) for an
+  // earlier start (learning moves about one point a year, so this is a small, documented approximation)
+  const hci = JSON.parse(await cached('wb_HD.HCI.HLOS.json', 'https://api.worldbank.org/v2/country/all/indicator/HD.HCI.HLOS?format=json&per_page=20000&source=63&date=2010:2020'))[1] || [];
+  const learning = {};
+  for (const r of hci) {
+    const iso = r.countryiso3code, y = +r.date;
+    if (!iso || r.value == null) continue;
+    const better = !learning[iso] || (y <= REF_YEAR ? y > learning[iso].y || learning[iso].y > REF_YEAR : y < learning[iso].y && learning[iso].y > REF_YEAR);
+    if (better) learning[iso] = { v: r.value, y };
+  }
+  // trend of adults' schooling over the ten years before the latest observation (calibrates cohort replacement)
+  const mys = latest('mys'), schoolTrend = {};
+  for (const r of rows) {
+    const o = mys[r[0]], old = o && r[col[`mys_${o.y - 10}`]];
+    if (old) schoolTrend[r[0]] = { v: +((o.v - +old) / 10).toFixed(4), y: o.y };
+  }
+  const early = REF_YEAR - 10; // for the curve drift (same window as the demographic curves)
+  // school expectancy of the generation now entering adulthood (~15 years earlier; the series starts in 1990)
+  const lagHi = Math.max(1990, REF_YEAR - 15);
+  return { schoolYears: mys, expectedYears: latest('eys'), learning, schoolTrend, expectedYearsEarly: latest('eys', early, early - 5), expectedYearsLag: latest('eys', lagHi, lagHi - 5) };
+}
+
 // Standard deviation of annual real GDP growth over VOL_FROM..VOL_TO (excludes the COVID shock). Needs >= 10 observations.
 async function growthVolatility() {
   const txt = await cached(`wb_growth_${VOL_FROM}_${VOL_TO}.json`, `https://api.worldbank.org/v2/country/all/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=20000&date=${VOL_FROM}:${VOL_TO}&source=2`);
@@ -724,6 +762,7 @@ async function main() {
   const vd = await vdem();
   ind.vdemEdi = vd.edi; ind.regimeRow = vd.row;
   ind.unIdeal = await ungaIdeal();
+  Object.assign(ind, await education());
   const gov = await wikidataGov([...new Set(regions.map((r) => r.wikidata).filter(Boolean))]);
   console.log();
 
@@ -745,6 +784,10 @@ async function main() {
     // political fields come from the core territory only (China's regime is not averaged with Hong Kong's)
     vdemEdi: ['VDEM', 'electdem_vdem (v2x_polyarchy)', 'core'], regimeRow: ['VDEM', 'regime_row_owid (v2x_regime)', 'core'],
     unIdeal: ['UNGA', 'IdealPointFP', 'core'],
+    schoolYears: ['HDR', 'mys (mean years of schooling, age 25+)', 'wavg'], expectedYears: ['HDR', 'eys (expected years of schooling)', 'wavg'],
+    expectedYearsLag: ['HDR', 'eys 15 years before the reference year (1990 at the earliest)', 'wavg'],
+    schoolTrend: ['HDR', 'mys: change per year over the previous ten years', 'wavg'],
+    learning: ['HCI', 'HD.HCI.HLOS (harmonised test scores, 300-625)', 'wavg'],
   };
   for (const c of countries) {
     // weights for averages: data population / GDP of each member (or NE estimate)
@@ -815,7 +858,7 @@ async function main() {
     }
     return { knots, n: pts.length, x: 'ln(PPP GDP per capita, current intl $)' };
   };
-  const curves = Object.fromEntries(['tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM', 'agriShare', 'industryShare', 'investment'].map((k) => [k, curve(k)]));
+  const curves = Object.fromEntries(['tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM', 'agriShare', 'industryShare', 'investment', 'expectedYears', 'learning'].map((k) => [k, curve(k)]));
 
   // Curve drift: the same binned curves from a cross-section EARLY_YEAR = REF_YEAR - 10 (latest observation in the five
   // years up to it), interpolated at the later knots. drift[k] = change per year at knot k (log change for TFR and
@@ -829,14 +872,15 @@ async function main() {
     for (let i = 1; i < knots.length; i++) if (x <= knots[i][0]) { const t = (x - knots[i - 1][0]) / (knots[i][0] - knots[i - 1][0]); return knots[i - 1][1] + t * (knots[i][1] - knots[i - 1][1]); }
     return knots[knots.length - 1][1];
   };
-  for (const k of ['tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM']) {
+  early.expectedYears = ind.expectedYearsEarly;
+  for (const k of ['tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM', 'expectedYears']) {
     // within-country change not explained by moving along today's curve, per year
     const log = k === 'tfr' || k.startsWith('u5');
     const tr = (y) => (log ? Math.log(y) : y);
     const pts = [];
     for (const c of countries) {
       const code = c.members[0].dataCode, f = c.fields;
-      if (!(early.pop[code]?.v >= 5e5 && early.gdpPpp[code] && early[k][code] && f[k]?.s === 'WDI' && f.gdpPpp?.s === 'WDI')) continue;
+      if (!(early.pop[code]?.v >= 5e5 && early.gdpPpp[code] && early[k][code] && (f[k]?.s === 'WDI' || f[k]?.s === 'HDR') && f.gdpPpp?.s === 'WDI')) continue;
       const x0 = Math.log(early.gdpPpp[code].v / early.pop[code].v), x1 = Math.log(f.gdpPpp.v / f.pop.v);
       const years = f[k].y - early[k][code].y;
       if (years < 5) continue;

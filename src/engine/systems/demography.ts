@@ -291,7 +291,8 @@ export function demographyYearly(st: WorldState, b: Baseline, p: Params): void {
     // Post-transition ("Phase III", UN WPP): once below replacement, the target blends toward a long-run level.
     if (f.phase3Years[c] > 0 || f.tfr[c] < p.fertilityPhase3.entry) f.phase3Years[c] += 1;
     const w = Math.exp(-f.phase3Years[c] / p.fertilityPhase3.years);
-    const transition = curveAt(cv.tfr, y, dy) * Math.exp(f.tfrResid[c]);
+    // schooling gained since the start lowers fertility beyond what income implies (education.ts)
+    const transition = curveAt(cv.tfr, y, dy) * Math.exp(f.tfrResid[c] - p.education.fertility * (f.eduYears[c] - f.eduYears0[c]));
     const tfrTarget = p.fertilityPhase3.on ? Math.exp(w * Math.log(transition) + (1 - w) * Math.log(p.fertilityPhase3.level)) : transition;
     f.tfr[c] += (tfrTarget - f.tfr[c]) * relax;
     f.e0F[c] += (curveAt(cv.lifeExpF, y) + f.e0FResid[c] - f.e0F[c]) * relax;

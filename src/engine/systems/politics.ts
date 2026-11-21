@@ -143,7 +143,8 @@ export function politicsQuarterly(st: WorldState, p: Params, rng: Rng, trade: Tr
     let dDemo = DT * P.diffusion * (nbr[c] - f.demo[c]) + P.demoNoise * Math.sqrt(DT) * uD;
     if (uEp < P.episode.perYear * DT) dDemo += P.episode.size * uEpSize + P.episode.legitimacy * (f.legit[c] - f.legit0[c]);
     // institutional persistence: regimes drift back toward their long-run institutional level after shocks
-    dDemo += DT * P.persistence * (f.demo0[c] - f.demo[c]);
+    // (the long-run level rises with schooling gained since the start: modernisation theory, Lipset 1959, Barro 1999)
+    dDemo += DT * P.persistence * (Math.min(0.95, f.demo0[c] + p.education.democracy * (f.eduYears[c] - f.eduYears0[c])) - f.demo[c]);
     // executive aggrandisement: popular incumbents in weakly institutionalised electoral regimes erode constraints
     if (f.regime[c] >= 1 && f.demo[c] < 0.75) dDemo -= DT * P.aggrandisement * Math.max(0, f.approval[c] - 0.5) * (0.75 - f.demo[c]) * Math.min(f.govYears[c], 8);
     f.demo[c] = clamp(f.demo[c] + dDemo, 0.005, 0.95);

@@ -1,6 +1,6 @@
 // Shape of public/data/baseline.json (produced by scripts/build-data.mjs).
 
-export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI' | 'ORGS' | 'FLAGS';
+export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI' | 'ORGS' | 'FLAGS' | 'HDR' | 'HCI';
 
 /** A sourced observation: value, reference year, source. */
 export interface Obs { v: number; y: number; s: SourceId }
@@ -59,7 +59,7 @@ export interface Baseline {
     generated: string;
     sources: Record<string, { name: string; url: string; license: string }>;
     indicators: Record<string, { source: string; code: string; agg: string }>;
-    curves: Record<'tfr' | 'lifeExpF' | 'lifeExpM' | 'u5mrF' | 'u5mrM' | 'agriShare' | 'industryShare' | 'investment', Curve>;
+    curves: Record<'tfr' | 'lifeExpF' | 'lifeExpM' | 'u5mrF' | 'u5mrM' | 'agriShare' | 'industryShare' | 'investment' | 'expectedYears' | 'learning', Curve>;
     coverage: Record<string, Record<string, number>>;
     baseRates: { alliances: { window: string; accessionsPerYear: number; exitsPerYear: number; newTreatiesPerYear: number };
       window: string; regimeChangePerCountryYear: number; democracyBoundaryPerCountryYear: number; indexRuleCrossingsPerCountryYear: number; demoAbsChangeMedian: number; demoAbsChangeP90: number };

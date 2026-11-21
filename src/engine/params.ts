@@ -33,6 +33,19 @@ export const DEFAULT_PARAMS = {
   /** Decay time (years) of each country's residual from the cross-sectional regression (assumption). */
   residualYears: 40,
 
+  /** Education (systems/education.ts). returnPerYear: earnings return to a learning-adjusted year of school (World Bank
+   *  Human Capital Index uses 8%; Psacharopoulos & Patrinos 2018 world mean ≈ 9%). replacement: multiplier on the share
+   *  of 25-year-olds in the adult population, standing in for the faster exit of older, less schooled adults
+   *  (assumption). pipelineYears: lag from school expectancy to adults' attainment (~15 years: school ages 5-25).
+   *  attainment: years attained per year of school expectancy (HDR 2023: mean years ≈ 0.85 × expected years of the
+   *  cohort in high-attainment countries; assumption). learningYears: relaxation time of test scores (assumption;
+   *  HLO trends 2000-2017 move ~1 point a year). warLoss: proportional loss of school expectancy per unit warLoad
+   *  (assumption; Syria's expected years fell by about a third during its war). fertility: change of log TFR per
+   *  year of adult schooling gained (assumption, partial effect beyond income; Lutz & KC 2011 find strong effects of
+   *  female education). democracy: change of the long-run democracy level per year gained (Barro 1999; assumption).
+   *  civil: change of civil-war log-odds per year of schooling above 8 (Thyne 2006; assumption). */
+  education: { returnPerYear: 0.08, replacement: 1.3, pipelineYears: 15, attainment: 0.85, learningYears: 20, warLoss: 0.08, fertility: 0.05, democracy: 0.02, civil: 0.08 },
+
   // --- economy (Solow growth with technology diffusion) ---
   /** Capital share in Cobb-Douglas output. Gollin (2002) finds ~0.3-0.4 after correcting for self-employment. */
   alpha: 0.35,
@@ -40,8 +53,10 @@ export const DEFAULT_PARAMS = {
   capitalOutput: 3.0,
   /** Annual depreciation rate of physical capital (PWT averages ~4-5%). */
   delta: 0.05,
-  /** Growth rate of frontier TFP per year. Long-run US TFP growth ~1% (Fernald 2014 range 0.5-1.5%). */
-  frontierGrowth: 0.01,
+  /** Growth rate of frontier TFP per year. Long-run US TFP growth ~1% (Fernald 2014 range 0.5-1.5%), less the part
+   *  that rising schooling contributed (Fernald & Jones 2014: ~0.3-0.4 pp of output growth), which human capital now
+   *  carries (systems/education.ts): 0.01 − 0.0026 × (1 − α). */
+  frontierGrowth: 0.0083,
   /** Max share of the log-TFP gap closed per year with perfect absorptive capacity. Conditional convergence ~2%/yr (Barro 1991). */
   catchUp: 0.02,
   /** Absorptive capacity = logistic(slope * WGI government effectiveness). Assumption linking institutions to diffusion. */

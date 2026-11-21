@@ -97,7 +97,8 @@ function civilZ(st: WorldState, p: Params, net: ConflictNet, c: number): number 
   const f = st.f, k = p.conflict.civil;
   const nbrWar = net.nbrs[c].some((j) => f.warLoad[j] > 0.5) ? 1 : 0;
   return k.pop * Math.log(totalPop(st, c) / 1e7) - k.income * Math.log(gdpPppPc(st, c) / 5000) + k.anocracy * (f.regime[c] === 1 ? 1 : 0) - k.liberal * (f.regime[c] === 3 ? 1 : 0)
-    + k.unrest * (f.unrest[c] - 0.3) + k.polarisation * f.relPolar[c] + k.youth * (youthShare(st, c) - 0.3) + k.memory * f.warMem[c] + k.neighbour * nbrWar;
+    + k.unrest * (f.unrest[c] - 0.3) + k.polarisation * f.relPolar[c] + k.youth * (youthShare(st, c) - 0.3) + k.memory * f.warMem[c] + k.neighbour * nbrWar
+    - p.education.civil * (f.eduYears[c] - 8); // schooling lowers civil-war risk beyond income (Thyne 2006)
 }
 
 /** Nuclear umbrella: own arsenal (1) or a defence treaty with a nuclear state (0.5). */
