@@ -22,6 +22,7 @@ import type { Rng } from '../rng';
 import type { WorldState, SimEvent } from '../state';
 import { cohortIndex } from '../state';
 import { gdpPppPc } from './demography';
+import { holdElection, seizePower } from './parties';
 import type { TradeNet } from './trade';
 
 const DT = 0.25;
@@ -155,10 +156,12 @@ export function politicsQuarterly(st: WorldState, p: Params, rng: Rng, trade: Tr
     if (f.regime[c] >= 1 && f.nextElection[c] >= 0 && st.day >= f.nextElection[c]) {
       f.nextElection[c] += Math.round(P.termYears * 365.25);
       const pWin = logistic(P.election.approval * (f.approval[c] - 0.5) + P.election.autocracy * (1 - f.demo[c]) - P.election.terms * f.govTerms[c]);
-      if (uElec < pWin) { f.govTerms[c] += 1; emit(st, { k: 'election_won', c, v: pWin, x: x() }); }
+      if (uElec < pWin) { f.govTerms[c] += 1; const res = holdElection(st, c, true, uElec); emit(st, { k: 'election_won', c, v: pWin, x: { ...x(), ...res } }); }
       else {
-        emit(st, { k: 'election_lost', c, v: pWin, x: { ...x(), ideology: f.ideology[c] } });
+        const before = f.ideology[c];
         changeGovernment(st, c, uGov, 0.6);
+        const res = holdElection(st, c, false, uElec); // the parties decide who governs and the new orientation
+        emit(st, { k: 'election_lost', c, v: pWin, x: { ...x(), ideology: before, ...res } });
         // turnover restores constraints eroded by the outgoing government ("U-turns", Nord et al. 2024)
         if (f.demo[c] < 0.75) f.demo[c] = Math.min(0.95, f.demo[c] + P.uTurn);
       }
@@ -173,7 +176,7 @@ export function politicsQuarterly(st: WorldState, p: Params, rng: Rng, trade: Tr
         emit(st, { k: 'coup', c, x: ev });
         f.regime[c] = 0; f.demo[c] *= P.coup.demoFactor; f.legit[c] = Math.min(f.legit[c], 0.35); f.coupMem[c] += 1;
         f.unrest[c] = clamp(f.unrest[c] + 0.1); f.cycle[c] -= P.coup.outputLoss; f.nextElection[c] = -1;
-        changeGovernment(st, c, uGov, 0.45);
+        changeGovernment(st, c, uGov, 0.45); seizePower(st, c, true);
       } else {
         emit(st, { k: 'coup_failed', c, x: ev });
         f.coupMem[c] += 0.5; f.unrest[c] = clamp(f.unrest[c] + 0.05);
@@ -197,7 +200,7 @@ export function politicsQuarterly(st: WorldState, p: Params, rng: Rng, trade: Tr
         } else {
           emit(st, { k: 'regime_overthrown', c, x: ev });
           f.regime[c] = Math.min(f.regime[c], 1);
-          changeGovernment(st, c, uGov, 0.5);
+          changeGovernment(st, c, uGov, 0.5); seizePower(st, c, false);
         }
         f.unrest[c] = 0.4; f.legit[c] = 0.4; f.cycle[c] -= P.uprising.outputLoss;
       }

@@ -19,6 +19,8 @@ runs offline. Raw downloads are cached in `.cache/` (not committed). The baselin
 | WD | Wikidata SPARQL (P122 form of government, P31 instance of, P1906/P1313 offices) | government form | CC0 |
 | DERIVED | computed from NE geometry | area (spherical), coastline (topology arcs not shared with another region), neighbours | Public domain |
 | IMPUTED | median of countries in the same World Bank region | fields missing after fallbacks | model assumption |
+| ORGS | Membership pages of the EU, African Union, ECOWAS, ASEAN, Mercosur, OPEC, OECD, BRICS and SCO (curated in `scripts/build-data.mjs` with joining and leaving years and suspensions) | international organisations at the reference year | facts cited |
+| WD_PARTY | Wikidata: head of government (P6) / head of state (P35) on 31 December of the reference year, their party (P102) at that date, its political alignment (P1387) | the ruling party at the start (116 countries for 2023) | CC0 |
 | UCDP | UCDP/PRIO Armed Conflict Dataset v26.1 and UCDP Battle-Related Deaths Dataset v26.1 (conflict level) | armed conflicts under way at the reference year (sides, start, goal, battle deaths), onset, duration and battle-death rates 1990-2023, last year of internal conflict per country, interstate conflict history (grievance) | CC BY 4.0 |
 | SIPRI | SIPRI Yearbook 2023, World nuclear forces | list of the nine nuclear-armed states | facts cited |
 

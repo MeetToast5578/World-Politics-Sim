@@ -6,7 +6,7 @@ import { formatDate, civilFromDays } from '../engine/calendar';
 import type { Frame, FromWorker, ToWorker } from '../worker/protocol';
 import { MapView, type MapRegion, type MapLabel, type Ping } from './MapView';
 import { isMajor } from './NewsList';
-import { describeEvent } from '../engine/describe';
+import { describeEvent, type NewsContext } from '../engine/describe';
 import { CountryPanel } from './CountryPanel';
 import { WorldPanel } from './WorldPanel';
 import { Timeline } from './Timeline';
@@ -21,10 +21,10 @@ const SPEEDS: [string, number, string][] = [
 // news ripple colours by kind: fighting red, upheaval orange, politics and diplomacy blue, peace green, economy purple
 const PING_COLORS = { war: 'rgba(192,67,47,ALPHA)', upheaval: 'rgba(214,124,40,ALPHA)', politics: 'rgba(46,109,180,ALPHA)', peace: 'rgba(59,139,90,ALPHA)', economy: 'rgba(122,91,181,ALPHA)', other: 'rgba(90,100,110,ALPHA)' };
 function pingKind(k: string): keyof typeof PING_COLORS {
-  if (/^(war_|territory_|nuclear|civil_war_started|civil_war_escalated|regime_imposed)/.test(k)) return 'war';
+  if (/^(war_|territory_|nuclear|civil_war_started|civil_war_escalated|regime_imposed|independence)/.test(k)) return 'war';
   if (/^(ceasefire|peace_deal|conflict_faded|civil_war_won|autonomy_won)/.test(k)) return 'peace';
   if (/^(coup|revolution|regime_overthrown|rebels_won|protests|government_collapse|autocratization)/.test(k)) return 'upheaval';
-  if (/^(election|democratization|elections_restored|alliance|sanctions|un_sanctions|diplomatic)/.test(k)) return 'politics';
+  if (/^(election|democratization|elections_restored|alliance|sanctions|un_sanctions|diplomatic|org_)/.test(k)) return 'politics';
   if (/^(recession|sovereign|oil|inflation|gdp_rank|debt)/.test(k)) return 'economy';
   return 'other';
 }
@@ -35,7 +35,7 @@ function writeFlag() { try { localStorage.setItem(WELCOMED, '1'); } catch { /* p
 
 export function App() {
   const worker = useRef<Worker | null>(null);
-  const [baseline, setBaseline] = useState<Baseline | null>(null);
+  const [baseline0, setBaseline] = useState<Baseline | null>(null);
   const [topo, setTopo] = useState<Topology | null>(null);
   const [frame, setFrame] = useState<Frame | null>(null);
   const events = useRef<SimEvent[]>([]);
@@ -54,11 +54,12 @@ export function App() {
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
   // ripples on the map for the major news of each frame (at most 4 at a time, one per country)
   const nameRef = useRef<(c: number) => string>(() => '');
+  const newsRef = useRef<NewsContext>({});
   const addPings = (es: SimEvent[], pop: number[]) => {
     const now = performance.now(), weight = (c: number) => pop[c] ?? 0;
     for (const e of es) {
       if (e.c < 0 || !isMajor(e, weight)) continue;
-      const h = describeEvent(e, nameRef.current).headline;
+      const h = describeEvent(e, nameRef.current, newsRef.current).headline;
       pings.current = [...pings.current.filter((g) => g.c !== e.c), { c: e.c, t: now, color: PING_COLORS[pingKind(e.k)], text: h.length > 48 ? h.slice(0, 46) + '…' : h }].slice(-4);
     }
   };
@@ -86,8 +87,15 @@ export function App() {
   useEffect(() => { send({ type: 'select', c: selected }); }, [selected, send]);
   useEffect(() => { if (!message) return; const t = setTimeout(() => setMessage(null), 6000); return () => clearTimeout(t); }, [message]);
 
+  // countries born during the run are appended to the start data (the worker sends them when their number changes)
+  const extra = useRef<Baseline['countries']>([]);
+  if (frame?.extraCountries) extra.current = frame.extraCountries;
+  const extraKey = extra.current.map((c) => c.id).join();
+  const baseline = useMemo(() => (baseline0 && extra.current.length ? { ...baseline0, countries: [...baseline0.countries, ...extra.current] } : baseline0), [baseline0, extraKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const name = useCallback((c: number) => baseline?.countries[c]?.name ?? '?', [baseline]);
   nameRef.current = name;
+  const news = useMemo(() => ({ org: (o: number) => baseline?.meta.organisations[o]?.name ?? '?', party: (c: number) => baseline?.countries[c]?.rulingParty?.name }), [baseline]);
+  newsRef.current = news;
   // provinces with their current owners (the worker sends owners only when they change)
   const owners = useRef<number[]>([]);
   if (frame?.provinceOwner) owners.current = frame.provinceOwner;
@@ -116,15 +124,17 @@ export function App() {
     const P = baseline.provinces;
     return baseline.countries.map((c, k) => {
       let ids = P.map((_, i) => i).filter((i) => P[i].region === c.id);
+      if (!ids.length) ids = P.map((_, i) => i).filter((i) => owners.current[i] === k); // a new state: the provinces it holds
       if (!ids.length) ids = P.map((_, i) => i).filter((i) => c.regions.includes(P[i].region));
+      if (!ids.length) return { c: k, name: c.name, lon: c.geo.centroid[0], lat: c.geo.centroid[1], pop: 0 };
       let A = 0, x = 0, y = 0;
       for (const i of ids) { const a = Math.max(1, P[i].areaKm2); A += a; x += a * P[i].centroid[0]; y += a * P[i].centroid[1]; }
       x /= A; y /= A;
       let best = ids[0], d = Infinity;
       for (const i of ids) { const dd = (P[i].centroid[0] - x) ** 2 + (P[i].centroid[1] - y) ** 2; if (dd < d) { d = dd; best = i; } }
-      return { c: k, name: c.name, lon: P[best].centroid[0], lat: P[best].centroid[1], pop: c.fields.pop?.v ?? 0 };
+      return { c: k, name: c.name, lon: P[best].centroid[0], lat: P[best].centroid[1], pop: frame?.metrics.pop[k] ?? c.fields.pop?.v ?? 0 };
     }).sort((a, b) => b.pop - a.pop);
-  }, [baseline]);
+  }, [baseline, ownerVersion]); // eslint-disable-line react-hooks/exhaustive-deps
   const pings = useRef<Ping[]>([]);
 
   const mode = MAP_MODES.find((m) => m.id === modeId)!;
@@ -265,7 +275,7 @@ export function App() {
           {frame.detail && selected !== null
             ? <CountryPanel key={selected} baseline={baseline} detail={frame.detail} events={events.current} name={name} weight={weight}
                 coupRisk={frame.metrics.coupRisk[selected]} wars={frame.wars} startDay={frame.startDay} onSelect={setSelected} onClose={() => setSelected(null)} />
-            : <WorldPanel frame={frame} events={events.current} name={name} weight={weight} onSelect={setSelected} />}
+            : <WorldPanel frame={frame} events={events.current} name={name} news={news} weight={weight} onSelect={setSelected} />}
         </aside>
       </main>
 

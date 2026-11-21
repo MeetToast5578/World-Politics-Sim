@@ -170,6 +170,33 @@ describe('diplomacy', () => {
   });
 });
 
+describe('parties and organisations', () => {
+  it('start from data: ruling parties (Wikidata) and memberships (EU 27, six AU members suspended)', () => {
+    const sim = new Simulation(b, { seed: 2 }), st = sim.st, f = st.f, ix = (id: string) => st.ids.indexOf(id);
+    expect(b.countries[ix('IND')].rulingParty?.name).toBe('Bharatiya Janata Party');
+    expect(f.realParty[ix('IND')]).toBe(1);
+    expect(f.govLead[ix('IND')]).toBe(b.countries[ix('IND')].rulingParty!.family);
+    const o = (id: string) => b.meta.organisations.findIndex((x) => x.id === id), count = (id: string, s: number) => st.ids.filter((_, c) => st.orgMember[c * st.nOrg + o(id)] === s).length;
+    expect(count('EU', 1)).toBe(27);
+    expect(count('AU', 2)).toBe(6);
+    expect(st.orgMember[ix('GBR') * st.nOrg + o('EU')]).toBe(3); // left in 2020
+  });
+  it('stay consistent over 40 years: votes sum to one, governments hold their own seats, statuses valid', () => {
+    const sim = new Simulation(b, { seed: 8 });
+    years(sim, 40);
+    const st = sim.st, f = st.f;
+    for (let c = 0; c < st.n; c++) {
+      let v = 0; for (let i = 0; i < 8; i++) { const x = f[`v${i}` as `v${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7}`][c]; expect(x).toBeGreaterThanOrEqual(0); v += x; }
+      expect(v).toBeCloseTo(1, 9);
+      if (f.govLead[c] >= 0) expect((f.govMask[c] >> f.govLead[c]) & 1).toBe(1);
+    }
+    for (const s of st.orgMember) expect([0, 1, 2, 3]).toContain(s);
+    // every suspension in AU or ECOWAS followed a takeover or a collapse of democracy
+    const ev = st.events.filter((e) => e.k === 'org_suspended');
+    for (const e of ev) expect(e.x!.coup === 1 || e.x!.demo < 0.4).toBe(true);
+  }, 120000);
+});
+
 describe('armed conflict', () => {
   const id = (c: number) => b.countries[c].id;
   it('starts with the conflicts under way in 2023 (UCDP)', () => {
@@ -188,9 +215,31 @@ describe('armed conflict', () => {
       years(sim, 1);
       for (const x of sim.st.wars) for (const i of x.held) expect(sim.st.provinceOwner[i]).toBe(x.loc);
     }
-    // every province that changed hands went to a country that annexed territory
-    const gainers = new Set(sim.st.events.filter((e) => e.k === 'territory_annexed').map((e) => e.c));
+    // every province that changed hands went to a country that annexed territory or became independent
+    const gainers = new Set(sim.st.events.filter((e) => e.k === 'territory_annexed' || e.k === 'independence').map((e) => e.c));
     sim.st.provinceOwner.forEach((o, i) => { if (o !== owned0[i]) expect(gainers.has(o)).toBe(true); });
+  });
+  it('a new state: provinces, people and capital move without loss; saves and continuation stay exact', () => {
+    const sim = new Simulation(b, { seed: 4 }), st = sim.st;
+    const ukr = st.ids.indexOf('UKR'), n0 = st.n;
+    const lviv = b.provinces.findIndex((p) => p.region === 'UKR' && p.name === 'Lviv');
+    const P = worldPop(sim), K = st.f.K.reduce((x, y) => x + y, 0);
+    (sim as any).secede({ parent: ukr, provinces: [lviv], share: 0.06, u: 0.1, territory: null });
+    const c = n0;
+    expect(sim.st.n).toBe(n0 + 1);
+    expect(sim.st.ids[c]).toBe('NS1');
+    expect(sim.baseline.countries[c].name).toBe('Republic of Lviv');
+    expect(sim.st.provinceOwner[lviv]).toBe(c);
+    expect(worldPop(sim)).toBeCloseTo(P, 0);
+    expect(sim.st.f.K.reduce((x, y) => x + y, 0)).toBeCloseTo(K, 0);
+    let rs = 0; for (let r = 0; r < st.nRel; r++) rs += sim.st.religion[c * st.nRel + r];
+    expect(rs).toBeCloseTo(1, 9);
+    expect(sim.st.events.at(-1)!.k).toBe('independence');
+    const saved = loadWorld(b, saveWorld(sim));
+    expect(saved.hash()).toBe(sim.hash());
+    years(sim, 3); years(saved, 3);
+    expect(saved.hash()).toBe(sim.hash());
+    for (let k = 0; k < sim.st.n; k++) expect(Number.isFinite(sim.st.f.gdp[k]) && totalPop(sim.st, k) > 0).toBe(true);
   });
   it('a change of territory moves people, capital and output without creating or losing any', () => {
     const sim = new Simulation(b, { seed: 1 }), st = sim.st, f = st.f;

@@ -1,6 +1,7 @@
 // Renders chronicle events as a plain headline plus a short "why" line. Every word is built only from values stored
 // in the event, so the news can never claim something the simulation did not produce.
 import type { SimEvent } from './state';
+import { partyName } from './systems/parties';
 
 export interface Story { headline: string; why: string }
 
@@ -11,7 +12,12 @@ const deaths = (v: number) => (v >= 1e6 ? `${+(v / 1e6).toFixed(1)} million` : v
 const years = (y: number) => (y < 1 ? `${Math.max(1, Math.round(y * 12))} month${Math.round(y * 12) === 1 ? '' : 's'}` : `${Math.round(y)} year${Math.round(y) === 1 ? '' : 's'}`);
 const relation = (t: number) => (t < -0.5 ? 'deep distrust' : t < 0 ? 'mutual distrust' : t < 0.4 ? 'lukewarm relations' : 'good relations');
 
-export function describeEvent(e: SimEvent, name: (c: number) => string): Story {
+/** Names the news needs besides countries: organisations, and the real ruling party of a country (start data). */
+export interface NewsContext { org?: (o: number) => string; party?: (c: number) => string | null | undefined }
+
+export function describeEvent(e: SimEvent, name: (c: number) => string, ctx: NewsContext = {}): Story {
+  const org = ctx.org ?? (() => 'an international organisation');
+  const party = (fam: number, rel: number, real: number) => (real && ctx.party?.(e.c)) || partyName(fam, rel);
   const c = e.c >= 0 ? name(e.c) : 'World', o = e.o !== undefined && e.o >= 0 ? name(e.o) : '', x = e.x ?? {};
   const s = (headline: string, why = ''): Story => ({ headline, why });
   switch (e.k) {
@@ -38,9 +44,13 @@ export function describeEvent(e: SimEvent, name: (c: number) => string): Story {
     case 'gdp_rank_up':
       return s(`${c} overtakes ${o} as the world's ${ordinal(e.v!)} largest economy`);
     case 'election_won':
-      return s(`Government re-elected in ${c}`, `Approval was ${pct(x.approval)}.`);
+      return x.party !== undefined && x.party >= 0
+        ? s(`${party(x.party, x.rel, x.real)} stay${x.real ? 's' : ''} in power in ${c}`, `${x.real ? 'It' : 'They'} won ${pct(x.share)} of the vote${x.parties > 1 ? ` and govern${x.real ? 's' : ''} with ${x.parties - 1} partner${x.parties > 2 ? 's' : ''}` : ''}. Approval was ${pct(x.approval)}.`)
+        : s(`Government re-elected in ${c}`, `Approval was ${pct(x.approval)}.`);
     case 'election_lost':
-      return s(`Voters throw out the government in ${c}`, `Approval had fallen to ${pct(x.approval)}; growth was ${pct(x.growth, 1)} and the hardship index ${x.misery.toFixed(0)}.`);
+      return x.party !== undefined && x.party >= 0
+        ? s(`${party(x.party, x.rel, x.real)} win${x.real ? 's' : ''} the election in ${c}`, `With ${pct(x.share)} of the vote${x.parties > 1 ? `, leading a coalition of ${x.parties} parties` : ''}. The outgoing government had ${pct(x.approval)} approval; growth was ${pct(x.growth, 1)}.`)
+        : s(`Voters throw out the government in ${c}`, `Approval had fallen to ${pct(x.approval)}; growth was ${pct(x.growth, 1)} and the hardship index ${x.misery.toFixed(0)}.`);
     case 'coup':
       return s(`Military seizes power in ${c}`, `Unrest was at ${pct(x.unrest)} and the government had little legitimacy left (${pct(x.legit)}).`);
     case 'coup_failed':
@@ -100,6 +110,16 @@ export function describeEvent(e: SimEvent, name: (c: number) => string): Story {
       return s(`${c} annexes territory from ${o}`, `It keeps the ${x.provinces > 1 ? `${x.provinces} provinces` : 'province'} its army holds, home to ${people(e.v!)} people (${pct(x.share)} of ${o}'s population).`);
     case 'regime_imposed':
       return s(`${c} installs a new government in ${o}`, `After defeating ${o}'s army.`);
+    case 'org_joined':
+      return s(`${c} joins ${org(e.v!)}`, x.trust !== undefined ? `It has ${relation(x.trust)} with the members.` : '');
+    case 'org_left':
+      return s(`${c} leaves ${org(e.v!)}`, x.suspended ? 'It had been suspended and chose to walk out.' : `Relations with the other members had soured (${relation(x.trust)}).`);
+    case 'org_suspended':
+      return s(`${org(e.v!)} suspends ${c}`, x.coup ? 'After an unconstitutional change of government.' : `Democracy has collapsed (score ${x.demo.toFixed(2)}).`);
+    case 'org_readmitted':
+      return s(`${org(e.v!)} readmits ${c}`, 'Constitutional rule is back.');
+    case 'independence':
+      return s(`${c} declares independence from ${o}`, `Rebels won their war for ${x.provinces > 1 ? `${x.provinces} provinces` : 'their province'}, home to ${people(e.v!)} people. The new state ${x.democratic ? 'promises elections' : 'is ruled by its former rebel commanders'}.`);
     case 'nuclear_strike':
       return s(`${c} uses nuclear weapons against ${o}`, `An estimated ${deaths(e.v!)} people are killed. ${c} was facing ${x.occ > 0.2 ? `the occupation of ${pct(x.occ)} of its territory` : 'defeat'}. Markets crash and fear spreads around the world.`);
     default:
@@ -108,12 +128,13 @@ export function describeEvent(e: SimEvent, name: (c: number) => string): Story {
 }
 
 /** One-line text (headless runner, logs). */
-export const eventText = (e: SimEvent, name: (c: number) => string) => { const t = describeEvent(e, name); return t.why ? `${t.headline}. ${t.why}` : t.headline; };
+export const eventText = (e: SimEvent, name: (c: number) => string, ctx?: NewsContext) => { const t = describeEvent(e, name, ctx); return t.why ? `${t.headline}. ${t.why}` : t.headline; };
 
 /** How newsworthy an event is: 3 = world-changing, 2 = major, 1 = routine. Scaled by the countries' size in the UI. */
 export const IMPORTANCE: Record<string, number> = {
   oil_shock: 3, war_started: 3, war_joined: 3, war_won: 3, ceasefire: 3, territory_annexed: 3, regime_imposed: 3, nuclear_strike: 3,
-  rebels_won: 3, civil_war_escalated: 3, coup: 3, revolution: 3, regime_overthrown: 3, sovereign_default: 3, alliance_joined: 3, alliance_left: 3, alliance_formed: 3,
+  rebels_won: 3, civil_war_escalated: 3, independence: 3,
+  org_joined: 2, org_left: 2, org_suspended: 2, org_readmitted: 1, coup: 3, revolution: 3, regime_overthrown: 3, sovereign_default: 3, alliance_joined: 3, alliance_left: 3, alliance_formed: 3,
   gdp_rank_up: 2, democratization: 2, autocratization: 2, government_collapse: 2, election_lost: 2, diplomatic_crisis: 2, sanctions_imposed: 2, un_sanctions_lifted: 2,
   civil_war_started: 2, civil_war_won: 2, autonomy_won: 2, peace_deal: 2, conflict_faded: 1,
   pop_peak: 2, inflation_high: 2, recession_start: 2, protests: 2, coup_failed: 2, elections_restored: 2,
