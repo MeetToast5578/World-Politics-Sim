@@ -48,7 +48,7 @@ function diplomacyDetail(c: number) {
 function metrics(): Record<string, number[]> {
   const st = sim.st, { f, n, history } = st;
   const out: Record<string, number[]> = { pop: [], gdp: [], gdpPc: [], growth: [], tfr: [], lifeExp: [], old: [], debt: [], mil: [], milexShare: [], effectiveness: [], voice: [], unemp: [], inflation: [], trade: [], agri: [], oilExp: [],
-    demo: [], regime: [], approval: [], unrest: [], coupRisk: [], relPolar: [], nonrel: [], majorRel: [], relSel: [], sanctionLoad: [], bloc: [], war: [], tradeBloc: [], ideology: [] };
+    demo: [], regime: [], approval: [], unrest: [], coupRisk: [], relPolar: [], nonrel: [], majorRel: [], relSel: [], sanctionLoad: [], bloc: [], war: [], tradeBloc: [], ideology: [], school: [], eys: [], learn: [], excluded: [] };
   // trade bloc: first full membership among EU, ASEAN, Mercosur, ECOWAS, AU (index into st.orgIds); −2 suspended; −1 none
   const blocOrder = ['EU', 'ASEAN', 'MERCOSUR', 'ECOWAS', 'AU'].map((id) => st.orgIds.indexOf(id)).filter((o) => o >= 0);
   // war status: 3 fighting another country, 2 civil war (1,000+ battle deaths a year), 1 smaller armed conflict, 0 peace
@@ -68,6 +68,8 @@ function metrics(): Record<string, number[]> {
     out.growth.push(H >= 2 ? g[(H - 1) * n + c] / g[(H - 2) * n + c] - 1 : NaN);
     out.tfr.push(f.tfr[c]);
     out.lifeExp.push(f.lifeExp[c]);
+    out.excluded.push(st.groups.some((g) => g.c === c) ? st.groups.reduce((s, g) => s + (g.c === c && g.status <= 1 ? g.size : 0), 0) : NaN);
+    out.school.push(f.eduYears[c]); out.eys.push(f.eduExp[c]); out.learn.push(f.learn[c]);
     out.old.push(f.p2[c] / P);
     out.debt.push(f.debt[c] / f.gdp[c]);
     const noMilData = !sim.baseline.countries[c].fields.milexShare; // shown as "no data", not as zero
@@ -134,7 +136,8 @@ function frame(): Frame {
     const cohort = (sex: number) => Array.from(st.cohorts.subarray(cohortIndex(c, sex), cohortIndex(c, sex) + AGES));
     fr.detail = { c, fields: Object.fromEntries(FIELDS.map((k) => [k, st.f[k][c]])), history: { years: st.history.years, series }, pyramid: { f: cohort(0), m: cohort(1) },
       religion: Array.from(st.religion.subarray(c * st.nRel, (c + 1) * st.nRel)), diplomacy: diplomacyDetail(c),
-      orgs: Array.from(st.orgMember.subarray(c * st.nOrg, (c + 1) * st.nOrg)) };
+      orgs: Array.from(st.orgMember.subarray(c * st.nOrg, (c + 1) * st.nOrg)),
+      groups: st.groups.flatMap((g, i) => (g.c === c ? [{ i, name: g.name, size: g.size, status: g.status, aut: g.aut }] : [])).sort((a, z) => z.size - a.size) };
   }
   return fr;
 }

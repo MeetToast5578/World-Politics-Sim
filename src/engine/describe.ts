@@ -13,13 +13,15 @@ const years = (y: number) => (y < 1 ? `${Math.max(1, Math.round(y * 12))} month$
 const relation = (t: number) => (t < -0.5 ? 'deep distrust' : t < 0 ? 'mutual distrust' : t < 0.4 ? 'lukewarm relations' : 'good relations');
 
 /** Names the news needs besides countries: organisations, and the real ruling party of a country (start data). */
-export interface NewsContext { org?: (o: number) => string; party?: (c: number) => string | null | undefined }
+export interface NewsContext { org?: (o: number) => string; party?: (c: number) => string | null | undefined; group?: (g: number) => string }
 
 export function describeEvent(e: SimEvent, name: (c: number) => string, ctx: NewsContext = {}): Story {
   const org = ctx.org ?? (() => 'an international organisation');
   const party = (fam: number, rel: number, real: number) => (real && ctx.party?.(e.c)) || partyName(fam, rel);
   const c = e.c >= 0 ? name(e.c) : 'World', o = e.o !== undefined && e.o >= 0 ? name(e.o) : '', x = e.x ?? {};
   const s = (headline: string, why = ''): Story => ({ headline, why });
+  const grp = (g: number | undefined) => (g !== undefined && g >= 0 && ctx.group ? ctx.group(g) : null);
+  const rebels = grp(x.group);
   switch (e.k) {
     case 'oil_shock':
       return s(`Oil prices ${e.v! > 0 ? 'surge' : 'collapse'} ${pct(Math.abs(e.v!))} in a year`, `The oil price index is now ${(x.price * 100).toFixed(0)} (2023 = 100). Exporters gain, importers pay more.`);
@@ -85,15 +87,15 @@ export function describeEvent(e: SimEvent, name: (c: number) => string, ctx: New
     case 'alliance_formed':
       return s(`${c} and ${o} sign a defence pact`, `Both feel threatened and trust each other.`);
     case 'civil_war_started':
-      return s(`Armed rebellion breaks out in ${c}`, `Unrest was ${pct(x.unrest)}${x.regime === 1 ? ' under an electoral autocracy' : ''}${x.polar > 0.5 ? ', with deep religious divisions' : ''}${x.income < 5000 ? ' in a poor country' : ''}. The chance of this in a given year was ${pct(x.hazard, 1)}.`);
+      return s(rebels ? `${rebels} rise up in arms in ${c}` : `Armed rebellion breaks out in ${c}`, `${rebels ? `They are excluded from power. ` : ''}Unrest was ${pct(x.unrest)}${x.regime === 1 ? ' under an electoral autocracy' : ''}${x.polar > 0.5 ? ', with deep religious divisions' : ''}${x.income < 5000 ? ' in a poor country' : ''}. The chance of this in a given year was ${pct(x.hazard, 1)}.`);
     case 'civil_war_escalated':
       return s(`Fighting in ${c} becomes a full civil war`, `Battles are now killing about ${deaths(e.v!)} people a year.`);
     case 'civil_war_won':
       return s(`${c}'s government defeats the rebels`, `After ${years(x.years)} of fighting and ${deaths(x.deaths)} battle deaths.`);
     case 'rebels_won':
-      return s(`Rebels take power in ${c}`, `After ${years(x.years)} of civil war and ${deaths(x.deaths)} battle deaths. ${e.v ? 'They promise elections.' : 'They rule without elections.'}`);
+      return s(rebels ? `Rebels take power in ${c}; ${rebels} now share in government` : `Rebels take power in ${c}`, `After ${years(x.years)} of civil war and ${deaths(x.deaths)} battle deaths. ${e.v ? 'They promise elections.' : 'They rule without elections.'}`);
     case 'autonomy_won':
-      return s(`Rebels in ${c} win self-rule for their region`, `After ${years(x.years)} of fighting. ${c} keeps its borders, but the region governs itself.`);
+      return s(rebels ? `${rebels} in ${c} win self-rule for their homeland` : `Rebels in ${c} win self-rule for their region`, `After ${years(x.years)} of fighting. ${c} keeps its borders, but the region governs itself.`);
     case 'peace_deal':
       return s(`Peace agreement ends the fighting in ${c}`, `After ${years(x.years)} and ${deaths(x.deaths)} battle deaths.`);
     case 'conflict_faded':
@@ -110,6 +112,10 @@ export function describeEvent(e: SimEvent, name: (c: number) => string, ctx: New
       return s(`${c} annexes territory from ${o}`, `It keeps the ${x.provinces > 1 ? `${x.provinces} provinces` : 'province'} its army holds, home to ${people(e.v!)} people (${pct(x.share)} of ${o}'s population).`);
     case 'regime_imposed':
       return s(`${c} installs a new government in ${o}`, `After defeating ${o}'s army.`);
+    case 'group_included':
+      return s(`${grp(e.v) ?? 'An excluded group'} gain a share of power in ${c}`, `${pct(x.size)} of the population, until now kept out of government.${x.demo > 0.5 ? ' Democracies include more groups.' : ''}`);
+    case 'group_excluded':
+      return s(`${grp(e.v) ?? 'A group'} pushed out of power in ${c}`, `${pct(x.size)} of the population lose their place in government${x.military ? ' under military rule' : ''}. Groups that lose power often take up arms within a few years.`);
     case 'org_joined':
       return s(`${c} joins ${org(e.v!)}`, x.trust !== undefined ? `It has ${relation(x.trust)} with the members.` : '');
     case 'org_left':
@@ -134,7 +140,7 @@ export const eventText = (e: SimEvent, name: (c: number) => string, ctx?: NewsCo
 export const IMPORTANCE: Record<string, number> = {
   oil_shock: 3, war_started: 3, war_joined: 3, war_won: 3, ceasefire: 3, territory_annexed: 3, regime_imposed: 3, nuclear_strike: 3,
   rebels_won: 3, civil_war_escalated: 3, independence: 3,
-  org_joined: 2, org_left: 2, org_suspended: 2, org_readmitted: 1, coup: 3, revolution: 3, regime_overthrown: 3, sovereign_default: 3, alliance_joined: 3, alliance_left: 3, alliance_formed: 3,
+  group_included: 2, group_excluded: 2, org_joined: 2, org_left: 2, org_suspended: 2, org_readmitted: 1, coup: 3, revolution: 3, regime_overthrown: 3, sovereign_default: 3, alliance_joined: 3, alliance_left: 3, alliance_formed: 3,
   gdp_rank_up: 2, democratization: 2, autocratization: 2, government_collapse: 2, election_lost: 2, diplomatic_crisis: 2, sanctions_imposed: 2, un_sanctions_lifted: 2,
   civil_war_started: 2, civil_war_won: 2, autonomy_won: 2, peace_deal: 2, conflict_faded: 1,
   pop_peak: 2, inflation_high: 2, recession_start: 2, protests: 2, coup_failed: 2, elections_restored: 2,

@@ -11,6 +11,7 @@ import path from 'node:path';
 import { topology } from 'topojson-server';
 import { neighbors, feature, quantize } from 'topojson-client';
 import { geoArea, geoLength, geoCentroid } from 'd3-geo';
+import { flagColours } from './flags.mjs';
 import { buildProvinces } from './provinces.mjs';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -29,6 +30,7 @@ const AGE_GROUPS = ['0004', '0509', '1014', '1519', '2024', '2529', '3034', '353
 const EARTH_R_KM = 6371.0088;
 
 const SOURCES = {
+  EPR: { name: 'Ethnic Power Relations 2021 and GeoEPR 2021 (Vogt et al. 2015, ETH Zürich)', url: 'https://icr.ethz.ch/data/epr/', license: 'Free for research and non-commercial use with citation' },
   NE: { name: 'Natural Earth 1:50m Admin 0 Countries (v5.x)', url: 'https://www.naturalearthdata.com/', license: 'Public domain' },
   WDI: { name: 'World Bank, World Development Indicators', url: 'https://data.worldbank.org/', license: 'CC BY 4.0 (some third-party series, e.g. SIPRI military data, carry their own terms)' },
   WGI: { name: 'World Bank, Worldwide Governance Indicators', url: 'https://www.worldbank.org/en/publication/worldwide-governance-indicators', license: 'CC BY 4.0' },
@@ -37,6 +39,9 @@ const SOURCES = {
   NE_EST: { name: 'Natural Earth POP_EST / GDP_MD attribute (fallback)', url: 'https://www.naturalearthdata.com/', license: 'Public domain' },
   IMPUTED: { name: 'Imputed: median of countries in the same World Bank region', url: '', license: 'Model assumption' },
   DERIVED: { name: 'Derived from geometry (Natural Earth 1:50m)', url: '', license: 'Public domain' },
+  HDR: { name: 'UNDP Human Development Report 2025, composite indices time series (mean and expected years of schooling, from Barro-Lee, UNESCO UIS and others)', url: 'https://hdr.undp.org/data-center/documentation-and-downloads', license: 'CC BY 3.0 IGO' },
+  HCI: { name: 'World Bank Human Capital Index (harmonised test scores, Patrinos & Angrist)', url: 'https://www.worldbank.org/en/publication/human-capital', license: 'CC BY 4.0' },
+  FLAGS: { name: 'Flag images, flagcdn.com (rendered from Wikimedia Commons flags), used only to derive map colours', url: 'https://flagcdn.com/', license: 'Public domain (national flags)' },
   VDEM: { name: 'V-Dem v14 via Our World in Data: Electoral Democracy Index, Regimes of the World', url: 'https://ourworldindata.org/democracy', license: 'CC BY-SA 4.0 (V-Dem); derived fields of baseline.json inherit share-alike' },
   WRP: { name: 'World Religion Project, national data (Maoz & Henderson 2013), via Correlates of War', url: 'https://correlatesofwar.org/data-sets/world-religion-data/', license: 'Free for research use with citation (COW terms)' },
   PROXY: { name: 'Proxy: composition of a named related state (documented in DATA_SOURCES.md)', url: '', license: 'Model assumption' },
@@ -554,6 +559,110 @@ async function wbIndicator(code, source, stat = 'latest', from = MIN_YEAR, to = 
   return best;
 }
 
+// Education: adults' mean years of schooling (25+, Barro-Lee based) and children's expected years from the UNDP
+// Human Development Report time series; harmonised test scores (learning) from the World Bank Human Capital Index.
+async function education() {
+  const [h, ...rows] = (await cached('hdr25.csv', 'https://hdr.undp.org/sites/default/files/2025_HDR/HDR25_Composite_indices_complete_time_series.csv'))
+    .trim().split(/\r?\n/).map((l) => l.replace(/"[^"]*"/g, 'x').split(','));
+  const col = Object.fromEntries(h.map((k, i) => [k, i]));
+  const latest = (prefix, hi = REF_YEAR, lo = MIN_YEAR) => {
+    const out = {};
+    for (const r of rows) for (let y = hi; y >= lo; y--) {
+      const v = r[col[`${prefix}_${y}`]];
+      if (v !== undefined && v !== '') { out[r[0]] = { v: +v, y }; break; }
+    }
+    return out;
+  };
+  // HCI test scores exist for 2010-2020 only: the latest up to the reference year, or the earliest (2010) for an
+  // earlier start (learning moves about one point a year, so this is a small, documented approximation)
+  const hci = JSON.parse(await cached('wb_HD.HCI.HLOS.json', 'https://api.worldbank.org/v2/country/all/indicator/HD.HCI.HLOS?format=json&per_page=20000&source=63&date=2010:2020'))[1] || [];
+  const learning = {};
+  for (const r of hci) {
+    const iso = r.countryiso3code, y = +r.date;
+    if (!iso || r.value == null) continue;
+    const better = !learning[iso] || (y <= REF_YEAR ? y > learning[iso].y || learning[iso].y > REF_YEAR : y < learning[iso].y && learning[iso].y > REF_YEAR);
+    if (better) learning[iso] = { v: r.value, y };
+  }
+  // trend of adults' schooling over the ten years before the latest observation (calibrates cohort replacement)
+  const mys = latest('mys'), schoolTrend = {};
+  for (const r of rows) {
+    const o = mys[r[0]], old = o && r[col[`mys_${o.y - 10}`]];
+    if (old) schoolTrend[r[0]] = { v: +((o.v - +old) / 10).toFixed(4), y: o.y };
+  }
+  const early = REF_YEAR - 10; // for the curve drift (same window as the demographic curves)
+  // school expectancy of the generation now entering adulthood (~15 years earlier; the series starts in 1990)
+  const lagHi = Math.max(1990, REF_YEAR - 15);
+  return { schoolYears: mys, expectedYears: latest('eys'), learning, schoolTrend, expectedYearsEarly: latest('eys', early, early - 5), expectedYearsLag: latest('eys', lagHi, lagHi - 5) };
+}
+
+// --- Ethnic groups: Ethnic Power Relations 2021 (politically relevant groups, size, access to power) and GeoEPR
+// (settlement areas) -------------------------------------------------------------------------------------------
+const EPR_STATUS = { DISCRIMINATED: 0, POWERLESS: 1, 'SELF-EXCLUSION': 1, 'JUNIOR PARTNER': 2, 'STATE COLLAPSE': 2, 'SENIOR PARTNER': 3, DOMINANT: 4, MONOPOLY: 4 };
+const parseCsv = (txt) => txt.trim().split(/\r?\n/).map((l) => {
+  const out = []; let cur = '', q = false;
+  for (const ch of l) { if (ch === '"') q = !q; else if (ch === ',' && !q) { out.push(cur); cur = ''; } else cur += ch; }
+  out.push(cur); return out;
+});
+/** Planar point-in-polygon (even-odd) over a GeoJSON Polygon/MultiPolygon; fine at province-centroid scale. */
+function inPolygon(geom, [x, y]) {
+  const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+  let inside = false;
+  for (const poly of polys) for (const ring of poly) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+  }
+  return inside;
+}
+async function ethnicGroups(countries, regions, provinces) {
+  const cw = await cowCrosswalk(countries), gw = (x) => GW_FIX[+x] ?? cw.num(x);
+  const [h, ...rows] = parseCsv(await cached('EPR-2021.csv', 'https://icr.ethz.ch/data/epr/core/EPR-2021.csv'));
+  const k = Object.fromEntries(h.map((x, i) => [x, i]));
+  const Y = Math.min(REF_YEAR, 2021); // EPR 2021 ends in 2021: later reference years use 2021 statuses
+  const ids = new Set(countries.map((c) => c.id)), byCountry = {}, unmatched = new Set();
+  // yearly status of every group over the 21 years up to Y, for the base rates of inclusion and exclusion
+  const series = {};
+  for (const r of rows) {
+    const st = EPR_STATUS[r[k.status]], from = +r[k.from], to = +r[k.to];
+    if (st === undefined) continue; // IRRELEVANT: not politically relevant
+    for (let y = Math.max(from, Y - 21); y <= Math.min(to, Y); y++) (series[r[k.gwgroupid]] ??= {})[y] = st;
+    if (from > Y || to < Y) continue;
+    const id = gw(r[k.gwid]);
+    if (!id || !ids.has(id)) { unmatched.add(r[k.statename]); continue; }
+    (byCountry[id] ??= []).push({ name: r[k.group], gid: +r[k.gwgroupid], size: +r[k.size], status: st, aut: r[k.reg_aut] === 'true' ? 1 : 0, provinces: [] });
+  }
+  let inc = 0, exc = 0, atRiskEx = 0, atRiskIn = 0;
+  for (const s of Object.values(series)) for (let y = Y - 20; y <= Y; y++) {
+    if (s[y] == null || s[y - 1] == null) continue;
+    if (s[y - 1] <= 1) { atRiskEx++; if (s[y] >= 2) inc++; } else { atRiskIn++; if (s[y] <= 1) exc++; }
+  }
+  // homelands: province centroids inside the group's GeoEPR polygon (regional groups only)
+  const geo = JSON.parse(await cached('GeoEPR-2021.geojson', 'https://icr.ethz.ch/data/epr/geoepr/GeoEPR-2021.geojson'));
+  const ownerOf = Object.fromEntries(regions.map((r) => [r.id, r.owner]));
+  const provOf = {};
+  provinces.forEach((p, i) => (provOf[ownerOf[p.region]] ??= []).push(i));
+  const REGIONAL = new Set(['Regionally based', 'Regional & urban', 'Aggregate']);
+  for (const f of geo.features) {
+    const p = f.properties;
+    if (p.from > Y || p.to < Y || !REGIONAL.has(p.type) || !f.geometry) continue;
+    const id = gw(p.gwid), g = byCountry[id]?.find((x) => x.gid === p.gwgroupid);
+    if (!g) continue;
+    for (const i of provOf[id] ?? []) if (inPolygon(f.geometry, provinces[i].centroid)) g.provinces.push(i);
+  }
+  // last year each group lost access to power (included → excluded), for the "recently downgraded" risk
+  for (const gs of Object.values(byCountry)) for (const g of gs) {
+    const s = series[g.gid] ?? {};
+    let down = null;
+    for (let y = Y - 20; y <= Y; y++) if (s[y] != null && s[y - 1] != null && s[y - 1] >= 2 && s[y] <= 1) down = y;
+    g.down = down; g.regional = g.provinces.length > 0; delete g.gid;
+  }
+  return {
+    byCountry, year: Y, unmatched: [...unmatched],
+    rates: { include: +(inc / atRiskEx).toFixed(4), exclude: +(exc / atRiskIn).toFixed(4), groupYears: atRiskEx + atRiskIn, from: Y - 20, to: Y },
+  };
+}
+
 // Standard deviation of annual real GDP growth over VOL_FROM..VOL_TO (excludes the COVID shock). Needs >= 10 observations.
 async function growthVolatility() {
   const txt = await cached(`wb_growth_${VOL_FROM}_${VOL_TO}.json`, `https://api.worldbank.org/v2/country/all/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=20000&date=${VOL_FROM}:${VOL_TO}&source=2`);
@@ -640,6 +749,9 @@ function classifyGov(w) {
 // --- Regions and entities from Natural Earth ---------------------------------
 // Natural Earth groups features by sovereignty (SOV_A3). We follow it, with explicit overrides where the
 // NE grouping does not match the entity we want to simulate. Each override is documented in DATA_SOURCES.md.
+// flags flagcdn does not carry, as HSL of their main colour: Northern Cyprus (red on white), Somaliland (green band)
+const FLAG_FALLBACK = { CYN: [0, 0.8, 0.45], SOL: [140, 0.7, 0.35] };
+
 const ENTITY_OVERRIDE = {
   PSX: { entity: 'PSE', status: 'partially_recognized' }, // NE files Palestine under Israel's sovereignty group
   SAH: { entity: 'ESH', status: 'non_self_governing' },   // Western Sahara: status unresolved; de facto Moroccan administration of most of it is NOT modelled yet
@@ -672,7 +784,7 @@ async function main() {
     const owner = ov ? ov.entity : sovCore[p.SOV_A3].code;
     return {
       id: p.ADM0_A3, name: p.NAME, owner, dataCode: dataCode(p), wbRegion: p.REGION_WB, continent: p.CONTINENT,
-      neType: p.TYPE, homepart: p.HOMEPART === 1, wikidata: p.WIKIDATAID,
+      neType: p.TYPE, homepart: p.HOMEPART === 1, wikidata: p.WIKIDATAID, iso2: p.ISO_A2_EH,
       status: ov?.status ?? (p.TYPE === 'Dependency' ? 'dependency' : 'integral'),
       nePop: p.POP_EST, nePopYear: p.POP_YEAR, neGdpMd: p.GDP_MD, neGdpYear: p.GDP_YEAR, idx: i,
     };
@@ -719,6 +831,7 @@ async function main() {
   const vd = await vdem();
   ind.vdemEdi = vd.edi; ind.regimeRow = vd.row;
   ind.unIdeal = await ungaIdeal();
+  Object.assign(ind, await education());
   const gov = await wikidataGov([...new Set(regions.map((r) => r.wikidata).filter(Boolean))]);
   console.log();
 
@@ -740,6 +853,10 @@ async function main() {
     // political fields come from the core territory only (China's regime is not averaged with Hong Kong's)
     vdemEdi: ['VDEM', 'electdem_vdem (v2x_polyarchy)', 'core'], regimeRow: ['VDEM', 'regime_row_owid (v2x_regime)', 'core'],
     unIdeal: ['UNGA', 'IdealPointFP', 'core'],
+    schoolYears: ['HDR', 'mys (mean years of schooling, age 25+)', 'wavg'], expectedYears: ['HDR', 'eys (expected years of schooling)', 'wavg'],
+    expectedYearsLag: ['HDR', 'eys 15 years before the reference year (1990 at the earliest)', 'wavg'],
+    schoolTrend: ['HDR', 'mys: change per year over the previous ten years', 'wavg'],
+    learning: ['HCI', 'HD.HCI.HLOS (harmonised test scores, 300-625)', 'wavg'],
   };
   for (const c of countries) {
     // weights for averages: data population / GDP of each member (or NE estimate)
@@ -810,7 +927,7 @@ async function main() {
     }
     return { knots, n: pts.length, x: 'ln(PPP GDP per capita, current intl $)' };
   };
-  const curves = Object.fromEntries(['tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM', 'agriShare', 'industryShare', 'investment'].map((k) => [k, curve(k)]));
+  const curves = Object.fromEntries(['tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM', 'agriShare', 'industryShare', 'investment', 'expectedYears', 'learning'].map((k) => [k, curve(k)]));
 
   // Curve drift: the same binned curves from a cross-section EARLY_YEAR = REF_YEAR - 10 (latest observation in the five
   // years up to it), interpolated at the later knots. drift[k] = change per year at knot k (log change for TFR and
@@ -824,14 +941,15 @@ async function main() {
     for (let i = 1; i < knots.length; i++) if (x <= knots[i][0]) { const t = (x - knots[i - 1][0]) / (knots[i][0] - knots[i - 1][0]); return knots[i - 1][1] + t * (knots[i][1] - knots[i - 1][1]); }
     return knots[knots.length - 1][1];
   };
-  for (const k of ['tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM']) {
+  early.expectedYears = ind.expectedYearsEarly;
+  for (const k of ['tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM', 'expectedYears']) {
     // within-country change not explained by moving along today's curve, per year
     const log = k === 'tfr' || k.startsWith('u5');
     const tr = (y) => (log ? Math.log(y) : y);
     const pts = [];
     for (const c of countries) {
       const code = c.members[0].dataCode, f = c.fields;
-      if (!(early.pop[code]?.v >= 5e5 && early.gdpPpp[code] && early[k][code] && f[k]?.s === 'WDI' && f.gdpPpp?.s === 'WDI')) continue;
+      if (!(early.pop[code]?.v >= 5e5 && early.gdpPpp[code] && early[k][code] && (f[k]?.s === 'WDI' || f[k]?.s === 'HDR') && f.gdpPpp?.s === 'WDI')) continue;
       const x0 = Math.log(early.gdpPpp[code].v / early.pop[code].v), x1 = Math.log(f.gdpPpp.v / f.pop.v);
       const years = f[k].y - early[k][code].y;
       if (years < 5) continue;
@@ -907,6 +1025,16 @@ async function main() {
   }
 
   const prov = await buildProvinces(cached, regions, countries);
+  const eth = await ethnicGroups(countries, regions, prov.provinces);
+  for (const c of countries) c.groups = eth.byCountry[c.id] ?? [];
+  console.log('ethnic groups', Object.values(eth.byCountry).flat().length, 'in', Object.keys(eth.byCountry).length, 'countries; rates', JSON.stringify(eth.rates), 'unmatched', eth.unmatched.join('; '));
+
+  // map colours from flags; land neighbours (between entities) are kept distinguishable
+  const ownerOf = Object.fromEntries(regions.map((r) => [r.id, r.owner]));
+  const nbOf = Object.fromEntries(countries.map((c) => [c.id, new Set(c.members.flatMap((m) => m.landNeighbors.map((n) => ownerOf[n])).filter((o) => o && o !== c.id))]));
+  const iso2 = Object.fromEntries(countries.map((c) => [c.id, c.members[0].iso2 && c.members[0].iso2 !== '-99' ? c.members[0].iso2.toLowerCase() : null]));
+  const colours = await flagColours(CACHE, countries.map((c) => ({ id: c.id, pop: c.fields.pop?.v ?? 0 })), iso2, nbOf, FLAG_FALLBACK);
+  for (const c of countries) c.colour = colours[c.id];
 
   const baseline = {
     meta: {
@@ -915,11 +1043,11 @@ async function main() {
       indicators: Object.fromEntries(Object.entries(allFields).map(([k, [s, code, agg]]) => [k, { source: s, code, agg }])),
       curves, coverage, baseRates: { ...vd.baseRates, alliances: al.rates }, secularisation,
       diplomacy: { treaties: al.treaties, atopYear: al.atopYear, allianceUpdates: al.notes, sanctions, sanctionsAsOf: sanctionYear, foreignPolicy, grievances },
-      conflict, organisations: orgs,
+      conflict, organisations: orgs, ethnic: { year: eth.year, rates: eth.rates },
       religions: RELIGIONS.map(([, label, family]) => ({ label, family })),
     },
     countries: countries.map(({ members, ...c }) => c),
-    regions: regions.map(({ idx, nePop, nePopYear, neGdpMd, neGdpYear, ...r }) => r),
+    regions: regions.map(({ idx, iso2, nePop, nePopYear, neGdpMd, neGdpYear, ...r }) => r),
     provinces: prov.provinces,
   };
   fs.writeFileSync(path.join(OUT, OUT_NAME), JSON.stringify(baseline));

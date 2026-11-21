@@ -10,6 +10,8 @@ import { economyQuarterly, interestRate } from '../src/engine/systems/economy';
 import { coupHazard } from '../src/engine/systems/politics';
 import { applyTradeEffects, pairOf } from '../src/engine/systems/diplomacy';
 import { transferTerritory } from '../src/engine/systems/conflict';
+import { educationYearly, humanCapital } from '../src/engine/systems/education';
+import { exclusion, rebelGroup } from '../src/engine/systems/ethnic';
 
 const b = loadBaseline();
 const years = (sim: Simulation, n: number) => sim.advanceTo(addMonths(sim.st.day, 12 * n));
@@ -285,6 +287,56 @@ describe('armed conflict', () => {
     expect(deathRate / N).toBeGreaterThan(0.3 * C.battleDeathsPerYear);
     expect(deathRate / N).toBeLessThan(3 * C.battleDeathsPerYear);
   }, 240000);
+});
+
+describe('education', () => {
+  it('starts from the data and keeps output unchanged at t0 (human capital is taken out of TFP)', () => {
+    const sim = new Simulation(b, { seed: 1 });
+    const c = sim.st.ids.indexOf('IND'), f = sim.st.f;
+    expect(f.eduYears[c]).toBeCloseTo(b.countries[c].fields.schoolYears!.v, 6);
+    expect(f.learn[c]).toBeCloseTo(b.countries[c].fields.learning!.v, 6);
+    expect(humanCapital(sim.st, sim.params, c)).toBeGreaterThan(1);
+    expect(f.gdp[c]).toBeCloseTo(b.countries[c].fields.gdp!.v, -3);
+  });
+  it('adults catch up with the schooling of younger generations; war keeps children out of school', () => {
+    const sim = new Simulation(b, { seed: 1 });
+    const niger = sim.st.ids.indexOf('NER'), y0 = sim.st.f.eduYears[niger];
+    years(sim, 30);
+    expect(sim.st.f.eduYears[niger]).toBeGreaterThan(y0); // re-read: new states replace the field arrays
+    const peace = new Simulation(b, { seed: 1 }), war = new Simulation(b, { seed: 1 }), c = peace.st.ids.indexOf('KEN');
+    war.st.f.warLoad[c] = 3;
+    educationYearly(peace.st, peace.baseline, peace.params); educationYearly(war.st, war.baseline, war.params);
+    expect(war.st.f.eduExp[c]).toBeLessThan(peace.st.f.eduExp[c] - 0.1); // one year of a 15-year adjustment
+  });
+});
+
+describe('ethnic groups', () => {
+  it('start from EPR with homelands, and a separatist rebellion recruits from the excluded group with a homeland', () => {
+    const sim = new Simulation(b, { seed: 1 }), st = sim.st, tur = st.ids.indexOf('TUR');
+    const kurds = st.groups.findIndex((g) => g.c === tur && g.name === 'Kurds');
+    expect(kurds).toBeGreaterThanOrEqual(0);
+    expect(st.groups[kurds].status).toBeLessThanOrEqual(1);
+    expect(st.groups[kurds].home.length).toBeGreaterThan(5);
+    expect(st.groups[kurds].home.every((i) => st.provinceOwner[i] === tur)).toBe(true);
+    expect(rebelGroup(st, tur, true)).toBe(kurds);
+    expect(exclusion(st, tur, 10).discriminated).toBeGreaterThan(0.1);
+  });
+  it('groups move with their homeland when a state secedes, and survive save/load', () => {
+    const sim = new Simulation(b, { seed: 2 });
+    let seceded = false;
+    for (let y = 0; y < 60 && !seceded; y++) { years(sim, 1); seceded = sim.st.newStates.length > 0; }
+    const st = sim.st;
+    for (const g of st.groups) expect(g.c).toBeLessThan(st.n);
+    for (const g of st.groups) expect(g.size).toBeGreaterThanOrEqual(0);
+    if (seceded) {
+      const c = st.ids.indexOf(st.newStates[0].id);
+      const moved = st.groups.filter((g) => g.c === c);
+      for (const g of moved) expect(g.home.filter((i) => st.newStates[0].provinces.includes(i)).length * 2).toBeGreaterThan(g.home.length);
+    }
+    // save / load keeps the groups
+    const again = loadWorld(b, saveWorld(sim));
+    expect(again.st.groups).toEqual(st.groups);
+  });
 });
 
 describe('invariants', () => {

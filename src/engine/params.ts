@@ -33,6 +33,24 @@ export const DEFAULT_PARAMS = {
   /** Decay time (years) of each country's residual from the cross-sectional regression (assumption). */
   residualYears: 40,
 
+  /** Education (systems/education.ts). returnPerYear: earnings return to a learning-adjusted year of school (World Bank
+   *  Human Capital Index uses 8%; Psacharopoulos & Patrinos 2018 world mean ≈ 9%). replacement: multiplier on the share
+   *  of 25-year-olds in the adult population, standing in for the faster exit of older, less schooled adults
+   *  (assumption). pipelineYears: lag from school expectancy to adults' attainment (~15 years: school ages 5-25).
+   *  attainment: years attained per year of school expectancy (HDR 2023: mean years ≈ 0.85 × expected years of the
+   *  cohort in high-attainment countries; assumption). learningYears: relaxation time of test scores (assumption;
+   *  HLO trends 2000-2017 move ~1 point a year). warLoss: proportional loss of school expectancy per unit warLoad
+   *  (assumption; Syria's expected years fell by about a third during its war). fertility: change of log TFR per
+   *  year of adult schooling gained (assumption, partial effect beyond income; Lutz & KC 2011 find strong effects of
+   *  female education). democracy: change of the long-run democracy level per year gained (Barro 1999; assumption).
+   *  civil: change of civil-war log-odds per year of schooling above 8 (Thyne 2006; assumption). */
+  education: { returnPerYear: 0.08, replacement: 1.3, pipelineYears: 15, attainment: 0.85, learningYears: 20, warLoss: 0.08, fertility: 0.05, democracy: 0.02, civil: 0.08 },
+
+  /** Ethnic groups (systems/ethnic.ts). Base rates of inclusion and exclusion come from EPR (data build). democracy*:
+   *  log hazard change per unit of the democracy index (assumption: inclusion is far more common in democracies,
+   *  Wimmer 2013); militaryExclusion: multiplier on exclusion under military or junta rule (assumption). */
+  ethnic: { democracyInclusion: 2.0, democracyExclusion: 2.0, militaryExclusion: 2.0 },
+
   // --- economy (Solow growth with technology diffusion) ---
   /** Capital share in Cobb-Douglas output. Gollin (2002) finds ~0.3-0.4 after correcting for self-employment. */
   alpha: 0.35,
@@ -40,8 +58,10 @@ export const DEFAULT_PARAMS = {
   capitalOutput: 3.0,
   /** Annual depreciation rate of physical capital (PWT averages ~4-5%). */
   delta: 0.05,
-  /** Growth rate of frontier TFP per year. Long-run US TFP growth ~1% (Fernald 2014 range 0.5-1.5%). */
-  frontierGrowth: 0.01,
+  /** Growth rate of frontier TFP per year. Long-run US TFP growth ~1% (Fernald 2014 range 0.5-1.5%), less the part
+   *  that rising schooling contributed (Fernald & Jones 2014: ~0.3-0.4 pp of output growth), which human capital now
+   *  carries (systems/education.ts): 0.01 − 0.0026 × (1 − α). */
+  frontierGrowth: 0.0083,
   /** Max share of the log-TFP gap closed per year with perfect absorptive capacity. Conditional convergence ~2%/yr (Barro 1991). */
   catchUp: 0.02,
   /** Absorptive capacity = logistic(slope * WGI government effectiveness). Assumption linking institutions to diffusion. */
@@ -197,7 +217,12 @@ export const DEFAULT_PARAMS = {
      *  population (log), income (log), electoral autocracy ("anocracy"), unrest (instability), religious polarisation,
      *  youth bulge (Urdal 2006), conflict trap (Collier et al. 2003), a neighbour at war (contagion); liberal
      *  democracies are rarely the site of armed conflict (Hegre et al. 2001); microstates are excluded. */
-    civil: { max: 0.5, pop: 0.4, income: 0.9, anocracy: 0.6, liberal: 1.0, unrest: 3, polarisation: 0.8, youth: 4, memory: 1.5, neighbour: 0.5, minPop: 2e5 },
+    civil: { max: 0.5, pop: 0.4, income: 0.9, anocracy: 0.6, liberal: 1.0, unrest: 3, polarisation: 0.8, youth: 4, memory: 1.5, neighbour: 0.5, minPop: 2e5,
+      // ethnic exclusion (Cederman, Wimmer & Min 2010: excluded groups' onset odds ~2-3× included ones, discriminated and
+      // recently downgraded groups higher still): log-odds per population share powerless / discriminated, and for a
+      // group that lost power within downgradedYears; territorial: P(war over territory) with / without an excluded
+      // group that has a homeland (UCDP 1990-2023: about half of civil conflicts are over territory)
+      powerless: 1.0, discriminated: 2.5, downgraded: 1.0, downgradedYears: 10, territorial: [0.65, 0.3] },
     /** Interstate onset (pair-year logit; Bremer 1992 "dangerous dyads", Russett & Oneal 2001): contiguity,
      *  joint democracy, grievance (rivalry), distrust, power parity, shared alliance, nuclear deterrence. Saturates at
      *  max per pair-year: even enduring rivalries (India-Pakistan) fight a few times per half-century. */

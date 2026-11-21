@@ -23,6 +23,7 @@ export interface CountryDetail {
   pyramid: { f: number[]; m: number[] }; // persons by single year of age 0..100+
   religion: number[];                     // shares by baseline.meta.religions category
   orgs: number[];                         // membership per baseline.meta.organisations: 0 none, 1 member, 2 suspended, 3 former
+  groups: { i: number; name: string; size: number; status: number; aut: number }[]; // ethnic groups living there now (EPR), largest first
   diplomacy: {
     treaties: { label: string; members: number; since: number }[];
     /** every relation of the country, most trusted first; drivers decompose the trust target (the "why") */

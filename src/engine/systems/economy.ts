@@ -1,4 +1,4 @@
-// Economy (quarterly unless noted). Output Y = A K^α L^(1-α) e^c in constant base-year USD (annualised).
+// Economy (quarterly unless noted). Output Y = A K^α (hL)^(1-α) e^c, h = human capital (systems/education.ts), in constant base-year USD (annualised).
 //  - capital: K' = K + (s·Y − δK)Δt; s = structural share (relaxes yearly toward an income curve + residual) plus a
 //    procyclical term
 //  - TFP: frontier growth plus catch-up on a gap measured against a mix of the world frontier and the TFP of the
@@ -18,6 +18,7 @@ import type { Params } from '../params';
 import type { Rng } from '../rng';
 import type { WorldState } from '../state';
 import { curveAt, gdpPppPc } from './demography';
+import { humanCapital } from './education';
 import { exportShare, tradeOpenness, worldGdp, type TradeNet } from './trade';
 
 const DT = 0.25;
@@ -122,7 +123,7 @@ export function economyQuarterly(st: WorldState, p: Params, rng: Rng, oilRng: Rn
     // physical bounds: unemployment cannot reach 100%; 60% exceeds any recorded national rate
     f.unemp[c] = Math.min(60, Math.max(0.5, f.unempStar[c] - p.okun * f.gap[c] * 100));
     const Yprev = f.gdp[c];
-    const Y = f.A[c] * f.K[c] ** p.alpha * labour(st, c) ** (1 - p.alpha) * Math.exp(f.gap[c]);
+    const Y = f.A[c] * f.K[c] ** p.alpha * (humanCapital(st, p, c) * labour(st, c)) ** (1 - p.alpha) * Math.exp(f.gap[c]);
     f.gdpPrevQ[c] = Yprev;
     f.gdp[c] = Y;
     f.negQ[c] = Y < Yprev ? f.negQ[c] + 1 : 0;

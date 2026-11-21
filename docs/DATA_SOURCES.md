@@ -23,6 +23,10 @@ runs offline. Raw downloads are cached in `.cache/` (not committed). The baselin
 | WD_PARTY | Wikidata: head of government (P6) / head of state (P35) on 31 December of the reference year, their party (P102) at that date, its political alignment (P1387) | the ruling party at the start (116 countries for 2023) | CC0 |
 | UCDP | UCDP/PRIO Armed Conflict Dataset v26.1 and UCDP Battle-Related Deaths Dataset v26.1 (conflict level) | armed conflicts under way at the reference year (sides, start, goal, battle deaths), onset, duration and battle-death rates 1990-2023, last year of internal conflict per country, interstate conflict history (grievance) | CC BY 4.0 |
 | SIPRI | SIPRI Yearbook 2023, World nuclear forces | list of the nine nuclear-armed states | facts cited |
+| HDR | UNDP Human Development Report 2025, composite indices complete time series (`mys_*`, `eys_*`) | adults' mean years of schooling (25+), its trend over the previous ten years, children's expected years of school now, 10 and 15 years before (curve drift, pipeline) | CC BY 3.0 IGO |
+| HCI | World Bank Human Capital Index (source 63), `HD.HCI.HLOS` harmonised test scores | learning (2010-2020 values; the 2000 baseline uses 2010, the earliest) | CC BY 4.0 |
+| EPR | Ethnic Power Relations 2021 core dataset (`EPR-2021.csv`) and GeoEPR 2021 settlement polygons (Vogt et al. 2015, "Integrating data on ethnicity, geography, and conflict", JCR 59(7)), icr.ethz.ch | ethnic groups at min(reference year, 2021): size, power status, regional autonomy, last loss of power; homeland provinces (province centroid inside the group's polygon); base rates of inclusion and exclusion over the previous 20 years | free for research with citation |
+| FLAGS | Flag images from flagcdn.com (PNG renderings of the public-domain flags on Wikimedia Commons); Northern Cyprus and Somaliland, which flagcdn lacks, from their flag descriptions | map colours only: the flag's most characteristic colour (pixel share weighted toward saturated colours), softened for the map; land neighbours with similar colours are shifted in hue, smaller country first | Public domain (national flags) |
 
 ## Field coverage (200 entities)
 
@@ -64,6 +68,11 @@ Columns: observed from the primary source / Natural Earth fallback / imputed / m
 | `govRevenue` | IMF `GGR_G01_GDP_PT` | 190 | 0 | 10 | 0 |
 | `govBalance` | IMF `GGXCNL_NGDP` | 192 | 0 | 8 | 0 |
 | `growthSd` | WDI `NY.GDP.MKTP.KD.ZG (sd 2000-2019)` | 192 | 0 | 8 | 0 |
+| `schoolYears` | HDR `mys` (mean years of schooling, 25+) | 192 | 0 | 8 | 0 |
+| `schoolTrend` | HDR `mys`, change per year over the previous ten years | 191 | 0 | 9 | 0 |
+| `expectedYears` | HDR `eys` (expected years of schooling) | 194 | 0 | 6 | 0 |
+| `expectedYearsLag` | HDR `eys` 15 years before the reference year | 190 | 0 | 10 | 0 |
+| `learning` | HCI `HD.HCI.HLOS` (harmonised test scores, 2020 or latest) | 170 | 0 | 30 | 0 |
 
 ### Phase 2 additions
 

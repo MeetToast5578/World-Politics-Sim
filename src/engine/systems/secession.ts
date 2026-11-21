@@ -37,7 +37,7 @@ export function extendBaseline(b: Baseline, ns: NewState): Baseline {
   const region: BaselineRegion = { id: ns.id, name: ns.name, owner: ns.id, dataCode: null, status: 'integral', areaKm2: Math.round(A), coastKm: 0, landNeighbors: [...nbRegions].sort(), centroid };
   const derived = Object.fromEntries(Object.entries(parent.fields).map(([k, o]) => [k, o && { ...o, s: 'DERIVED' as const }]));
   const country: BaselineCountry = {
-    ...parent, id: ns.id, name: ns.name, status: 'partially_recognized', regions: [ns.id], fields: derived,
+    ...parent, id: ns.id, name: ns.name, status: 'partially_recognized', regions: [ns.id], fields: derived, groups: [], // groups move in WorldState.groups
     geo: { ...parent.geo, areaKm2: Math.round(A), coastKm: 0, coreCoastKm: 0, centroid, s: 'DERIVED' },
   };
   return {

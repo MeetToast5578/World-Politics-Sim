@@ -39,6 +39,10 @@ export const MAP_MODES: MapMode[] = [
   { id: 'tfr', label: 'Children per woman', group: 'People', kind: 'sequential', metric: 'tfr', fmt: (v) => v.toFixed(1), about: 'Average number of children a woman has. About 2.1 keeps a population stable.', low: 'Few', high: 'Many' },
   { id: 'lifeExp', label: 'Life expectancy', group: 'People', kind: 'sequential', metric: 'lifeExp', fmt: (v) => `${v.toFixed(0)} years`, about: 'How long a newborn can expect to live.', low: 'Shorter', high: 'Longer' },
   { id: 'old', label: 'Ageing', group: 'People', kind: 'sequential', metric: 'old', fmt: (v) => fmtPct(v), about: 'Share of people aged 65 or older.', low: 'Young', high: 'Old' },
+  { id: 'school', label: 'Schooling', group: 'People', kind: 'sequential', metric: 'school', fmt: (v) => `${v.toFixed(1)} years`, about: 'Average years adults (25 and over) spent in school. Starts from UN Human Development Report data.', low: 'Little', high: 'Much' },
+  { id: 'eys', label: 'Years in school (children)', group: 'People', kind: 'sequential', metric: 'eys', fmt: (v) => `${v.toFixed(1)} years`, about: 'How many years of school a child starting today can expect. War keeps children out of school.', low: 'Few', high: 'Many' },
+  { id: 'learn', label: 'Learning', group: 'People', kind: 'sequential', metric: 'learn', fmt: (v) => v.toFixed(0), about: "What pupils actually learn: international test scores (PISA, TIMSS and regional tests) put on one scale by the World Bank. 625 is the top benchmark, 300 the minimum. Measures schooling quality, not people's innate ability.", low: 'Lower scores', high: 'Higher scores' },
+  { id: 'excluded', label: 'Excluded groups', group: 'People', kind: 'sequential', metric: 'excluded', fmt: (v) => fmtPct(v), about: 'Share of people in ethnic groups shut out of national government (Ethnic Power Relations, 2021). Exclusion, not ethnicity itself, raises the risk of rebellion. Grey: no politically relevant groups coded.', low: 'Everyone included', high: 'Many excluded' },
   { id: 'religion', label: 'Religion', group: 'People', kind: 'categorical', metric: 'majorRel', about: 'The largest religious group or denomination.' },
   { id: 'relPolar', label: 'Religious divisions', group: 'People', kind: 'sequential', metric: 'relPolar', fmt: (v) => v.toFixed(2), about: 'How evenly split the population is between religious groups. Deep splits raise the risk of conflict.', low: 'United', high: 'Divided' },
   { id: 'nonrel', label: 'Non-religious', group: 'People', kind: 'sequential', metric: 'nonrel', fmt: (v) => fmtPct(v), about: 'Share of people with no religion.', low: 'Few', high: 'Many' },
@@ -122,8 +126,13 @@ export function makeScale(mode: MapMode, values: number[]): Scale {
   };
 }
 
-/** Soft atlas colours, stable per country; neighbours rarely share a hue thanks to golden-angle spacing. */
-export function politicalColor(i: number): string {
-  const h = (i * 137.508) % 360, s = 38 + ((i * 7) % 3) * 8, l = 76 + ((i * 11) % 3) * 4;
-  return `hsl(${h.toFixed(1)} ${s}% ${l}%)`;
+/** Map colour: from the country's flag (build step); a state born during the run takes its parent's hue turned
+ *  far enough to tell them apart; golden-angle pastels where there is no colour. */
+export function politicalColor(c: { id: string; colour?: string } | undefined, i: number): string {
+  const m = c?.colour && /^#(..)(..)(..)$/.exec(c.colour);
+  if (!m) { const h = (i * 137.508) % 360, s = 38 + ((i * 7) % 3) * 8, l = 76 + ((i * 11) % 3) * 4; return `hsl(${h.toFixed(1)} ${s}% ${l}%)`; }
+  if (!c!.id.startsWith('NS')) return c!.colour!;
+  const [r, g, b] = m.slice(1).map((x) => parseInt(x, 16) / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn || 1e-9;
+  const h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return `hsl(${(h * 60 + 50 + ((i * 37) % 80)) % 360} 45% 74%)`;
 }
