@@ -106,6 +106,9 @@ export function economyQuarterly(st: WorldState, p: Params, rng: Rng, oilRng: Rn
     const gap = Math.max(0, p.trade.frontierWeight * (lnAf - lnA) + (1 - p.trade.frontierWeight) * partnerGap);
     growthA[c] = p.frontierGrowth + p.catchUp * f.absorb[c] * gap;
   }
+  // persistent growth regimes: AR(1) deviation of TFP growth (one draw per country per quarter, in index order)
+  const rhoG = Math.exp(-DT / p.growthRegime.years), sdG = p.growthRegime.sd * Math.sqrt(1 - rhoG * rhoG);
+  for (let c = 0; c < n; c++) { f.tfpDrift[c] = rhoG * f.tfpDrift[c] + sdG * rng.normal(); growthA[c] += f.tfpDrift[c]; }
   // 2. domestic cycles; one world shock per quarter is shared by all countries (synchronised downturns can emerge).
   //    Draws happen for every country in index order, so the random sequence never depends on state.
   const world = rng.normal(), wg = Math.sqrt(p.globalShockShare), wi = Math.sqrt(1 - p.globalShockShare);
