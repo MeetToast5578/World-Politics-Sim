@@ -23,6 +23,7 @@ runs offline. Raw downloads are cached in `.cache/` (not committed). The baselin
 | WD_PARTY | Wikidata: head of government (P6) / head of state (P35) on 31 December of the reference year, their party (P102) at that date, its political alignment (P1387) | the ruling party at the start (116 countries for 2023) | CC0 |
 | UCDP | UCDP/PRIO Armed Conflict Dataset v26.1 and UCDP Battle-Related Deaths Dataset v26.1 (conflict level) | armed conflicts under way at the reference year (sides, start, goal, battle deaths), onset, duration and battle-death rates 1990-2023, last year of internal conflict per country, interstate conflict history (grievance) | CC BY 4.0 |
 | SIPRI | SIPRI Yearbook 2023, World nuclear forces | list of the nine nuclear-armed states | facts cited |
+| FLAGS | Flag images from flagcdn.com (PNG renderings of the public-domain flags on Wikimedia Commons); Northern Cyprus and Somaliland, which flagcdn lacks, from their flag descriptions | map colours only: the flag's most characteristic colour (pixel share weighted toward saturated colours), softened for the map; land neighbours with similar colours are shifted in hue, smaller country first | Public domain (national flags) |
 
 ## Field coverage (200 entities)
 

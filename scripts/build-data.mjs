@@ -11,6 +11,7 @@ import path from 'node:path';
 import { topology } from 'topojson-server';
 import { neighbors, feature, quantize } from 'topojson-client';
 import { geoArea, geoLength, geoCentroid } from 'd3-geo';
+import { flagColours } from './flags.mjs';
 import { buildProvinces } from './provinces.mjs';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -37,6 +38,7 @@ const SOURCES = {
   NE_EST: { name: 'Natural Earth POP_EST / GDP_MD attribute (fallback)', url: 'https://www.naturalearthdata.com/', license: 'Public domain' },
   IMPUTED: { name: 'Imputed: median of countries in the same World Bank region', url: '', license: 'Model assumption' },
   DERIVED: { name: 'Derived from geometry (Natural Earth 1:50m)', url: '', license: 'Public domain' },
+  FLAGS: { name: 'Flag images, flagcdn.com (rendered from Wikimedia Commons flags), used only to derive map colours', url: 'https://flagcdn.com/', license: 'Public domain (national flags)' },
   VDEM: { name: 'V-Dem v14 via Our World in Data: Electoral Democracy Index, Regimes of the World', url: 'https://ourworldindata.org/democracy', license: 'CC BY-SA 4.0 (V-Dem); derived fields of baseline.json inherit share-alike' },
   WRP: { name: 'World Religion Project, national data (Maoz & Henderson 2013), via Correlates of War', url: 'https://correlatesofwar.org/data-sets/world-religion-data/', license: 'Free for research use with citation (COW terms)' },
   PROXY: { name: 'Proxy: composition of a named related state (documented in DATA_SOURCES.md)', url: '', license: 'Model assumption' },
@@ -640,6 +642,9 @@ function classifyGov(w) {
 // --- Regions and entities from Natural Earth ---------------------------------
 // Natural Earth groups features by sovereignty (SOV_A3). We follow it, with explicit overrides where the
 // NE grouping does not match the entity we want to simulate. Each override is documented in DATA_SOURCES.md.
+// flags flagcdn does not carry, as HSL of their main colour: Northern Cyprus (red on white), Somaliland (green band)
+const FLAG_FALLBACK = { CYN: [0, 0.8, 0.45], SOL: [140, 0.7, 0.35] };
+
 const ENTITY_OVERRIDE = {
   PSX: { entity: 'PSE', status: 'partially_recognized' }, // NE files Palestine under Israel's sovereignty group
   SAH: { entity: 'ESH', status: 'non_self_governing' },   // Western Sahara: status unresolved; de facto Moroccan administration of most of it is NOT modelled yet
@@ -672,7 +677,7 @@ async function main() {
     const owner = ov ? ov.entity : sovCore[p.SOV_A3].code;
     return {
       id: p.ADM0_A3, name: p.NAME, owner, dataCode: dataCode(p), wbRegion: p.REGION_WB, continent: p.CONTINENT,
-      neType: p.TYPE, homepart: p.HOMEPART === 1, wikidata: p.WIKIDATAID,
+      neType: p.TYPE, homepart: p.HOMEPART === 1, wikidata: p.WIKIDATAID, iso2: p.ISO_A2_EH,
       status: ov?.status ?? (p.TYPE === 'Dependency' ? 'dependency' : 'integral'),
       nePop: p.POP_EST, nePopYear: p.POP_YEAR, neGdpMd: p.GDP_MD, neGdpYear: p.GDP_YEAR, idx: i,
     };
@@ -908,6 +913,13 @@ async function main() {
 
   const prov = await buildProvinces(cached, regions, countries);
 
+  // map colours from flags; land neighbours (between entities) are kept distinguishable
+  const ownerOf = Object.fromEntries(regions.map((r) => [r.id, r.owner]));
+  const nbOf = Object.fromEntries(countries.map((c) => [c.id, new Set(c.members.flatMap((m) => m.landNeighbors.map((n) => ownerOf[n])).filter((o) => o && o !== c.id))]));
+  const iso2 = Object.fromEntries(countries.map((c) => [c.id, c.members[0].iso2 && c.members[0].iso2 !== '-99' ? c.members[0].iso2.toLowerCase() : null]));
+  const colours = await flagColours(CACHE, countries.map((c) => ({ id: c.id, pop: c.fields.pop?.v ?? 0 })), iso2, nbOf, FLAG_FALLBACK);
+  for (const c of countries) c.colour = colours[c.id];
+
   const baseline = {
     meta: {
       referenceYear: REF_YEAR, minYear: MIN_YEAR, startDate: `${REF_YEAR + 1}-01-01`,
@@ -919,7 +931,7 @@ async function main() {
       religions: RELIGIONS.map(([, label, family]) => ({ label, family })),
     },
     countries: countries.map(({ members, ...c }) => c),
-    regions: regions.map(({ idx, nePop, nePopYear, neGdpMd, neGdpYear, ...r }) => r),
+    regions: regions.map(({ idx, iso2, nePop, nePopYear, neGdpMd, neGdpYear, ...r }) => r),
     provinces: prov.provinces,
   };
   fs.writeFileSync(path.join(OUT, OUT_NAME), JSON.stringify(baseline));

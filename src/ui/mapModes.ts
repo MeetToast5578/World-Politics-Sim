@@ -122,8 +122,13 @@ export function makeScale(mode: MapMode, values: number[]): Scale {
   };
 }
 
-/** Soft atlas colours, stable per country; neighbours rarely share a hue thanks to golden-angle spacing. */
-export function politicalColor(i: number): string {
-  const h = (i * 137.508) % 360, s = 38 + ((i * 7) % 3) * 8, l = 76 + ((i * 11) % 3) * 4;
-  return `hsl(${h.toFixed(1)} ${s}% ${l}%)`;
+/** Map colour: from the country's flag (build step); a state born during the run takes its parent's hue turned
+ *  far enough to tell them apart; golden-angle pastels where there is no colour. */
+export function politicalColor(c: { id: string; colour?: string } | undefined, i: number): string {
+  const m = c?.colour && /^#(..)(..)(..)$/.exec(c.colour);
+  if (!m) { const h = (i * 137.508) % 360, s = 38 + ((i * 7) % 3) * 8, l = 76 + ((i * 11) % 3) * 4; return `hsl(${h.toFixed(1)} ${s}% ${l}%)`; }
+  if (!c!.id.startsWith('NS')) return c!.colour!;
+  const [r, g, b] = m.slice(1).map((x) => parseInt(x, 16) / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn || 1e-9;
+  const h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return `hsl(${(h * 60 + 50 + ((i * 37) % 80)) % 360} 45% 74%)`;
 }

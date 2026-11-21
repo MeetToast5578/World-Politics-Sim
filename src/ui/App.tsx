@@ -141,7 +141,7 @@ export function App() {
   const modeActive = !mode.needsSelection || selected !== null;
   const scale = useMemo(() => (frame && mode.metric && mode.kind !== 'categorical' ? makeScale(mode, frame.metrics[mode.metric]) : null), [frame, mode]);
   const fillFor = useCallback((owner: number) => {
-    if (mode.kind === 'political' || !modeActive) return politicalColor(owner);
+    if (mode.kind === 'political' || !modeActive) return politicalColor(baseline?.countries[owner], owner);
     if (owner === selected && mode.needsSelection) return '#1f2f3a';
     if (mode.kind === 'categorical') return categoryOf(mode, owner, frame!.metrics, baseline!, frame!.blocLabels)[1];
     const v = frame!.metrics[mode.metric!][owner];

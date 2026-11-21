@@ -1,6 +1,6 @@
 // Shape of public/data/baseline.json (produced by scripts/build-data.mjs).
 
-export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI' | 'ORGS';
+export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI' | 'ORGS' | 'FLAGS';
 
 /** A sourced observation: value, reference year, source. */
 export interface Obs { v: number; y: number; s: SourceId }
@@ -23,6 +23,8 @@ export interface BaselineCountry {
   /** party of the head of government (head of state in presidential systems) at the end of the reference year,
    *  with its left-right position (Wikidata P1387) and model party family; null where there is none */
   rulingParty?: { name: string; family: number; pos: number; s: SourceId } | null;
+  /** map colour derived from the flag (FLAGS), toned for the map; new states inherit their parent's */
+  colour?: string;
 }
 
 export interface BaselineRegion {
