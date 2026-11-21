@@ -15,6 +15,7 @@ Sections marked **[implemented]** describe running code; **[design]** describes 
 | Demography: single-year age × sex cohort-component model, Siler life tables, migration, demographic transition | implemented (Phase 2, see §3.1) |
 | Economy: growth + diffusion, business cycles with world shock, trade network, oil price, inflation, sectors, public debt, default | implemented (Phase 2, see §3.2) |
 | Backtest 2000→2023 with naive benchmarks, ensemble coverage, sensitivity analysis | implemented (`docs/BACKTEST.md`) |
+| Calibration: growth parameters fitted on 2000→2010 and tested out of sample on 2010→2023; persistent growth regimes sized by an accuracy budget | first round implemented (`docs/CALIBRATION.md`) |
 | Military capital stock (perpetual inventory of spending) | implemented; sets fighting strength (§3.6) |
 | Chronicle/news events carrying their causal inputs | implemented |
 | Observer UI: light, plain-language atlas of provinces with country names, animated news ripples, pulsing conflicts, marching front lines, occupied and rebel-held hatching; 33 map modes (8 featured), history bar with rewind, tabbed country view, world summary, news with explanations | implemented |

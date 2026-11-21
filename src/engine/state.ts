@@ -10,7 +10,7 @@ export const FIELDS = [
   'silA1F', 'silA2F', 'silA1M', 'silA2M', 'migRate', 'births', 'deaths', 'netMig', 'phase3Years',
   'tfrResid', 'e0FResid', 'e0MResid', 'u5FResid', 'u5MResid', 'urban',
   // economy (constant base-year USD, annualised flows)
-  'gdp', 'gdpPrevQ', 'gdpPrevY', 'K', 'A', 'cycle', 'gap', 'cycleSd', 'sInv', 'sStruct', 'invResid', 'pppRatio', 'unemp', 'unempStar',
+  'gdp', 'gdpPrevQ', 'gdpPrevY', 'K', 'A', 'tfpDrift', 'cycle', 'gap', 'cycleSd', 'sInv', 'sStruct', 'invResid', 'pppRatio', 'unemp', 'unempStar',
   'lfRate', 'negQ', 'absorb', 'inflation', 'piE', 'oilExp', 'rents', 'agriShare', 'indShare', 'agriResid', 'indResid', 'tradeShare',
   // public finance
   'debt', 'revShare', 'primSpendShare', 'pb0', 'debtRatio0',

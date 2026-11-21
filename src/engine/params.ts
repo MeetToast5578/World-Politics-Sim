@@ -68,6 +68,10 @@ export const DEFAULT_PARAMS = {
   absorbSlope: 1.5,
   /** Labour force needed to count toward the TFP frontier (excludes micro-states and resource enclaves). */
   frontierMinLabor: 2e6,
+  /** Persistent country growth shocks: an AR(1) deviation of TFP growth per year (growth accelerations and collapses
+   *  last years, Hausmann, Pritchett & Rodrik 2005; Pritchett 2000). sd: stationary s.d. of the deviation; years: its
+   *  persistence (e-folding time). Estimated in docs/CALIBRATION.md (npm run calibrate) on 2000→2010. */
+  growthRegime: { sd: 0.01, years: 8 },
   /** Quarterly persistence of the business-cycle component (assumption). */
   cycleRho: 0.8,
   /** Share of business-cycle innovation variance that is a common world shock. Kose, Otrok & Whiteman (2003) attribute
