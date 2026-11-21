@@ -18,6 +18,11 @@ export const DEFAULT_PARAMS = {
    *  effective drift years = fadeYears·(1 − e^(−t/fadeYears)). fadeYears is an assumption: a decade-long trend is not
    *  extrapolated indefinitely. Long-run fertility is the largest demographic uncertainty (DESIGN.md §8). */
   fertilityDrift: { on: true, fadeYears: 20 },
+  /** Years of life expectancy gained per year at a given income, beyond moving along the income curve: medicine and
+   *  public health improve everywhere. Record life expectancy rose ~0.24 years a year 1840-2000 (Oeppen & Vaupel
+   *  2002); gains in rich countries slowed to ~0.1-0.2 before COVID-19; the UN WPP 2024 medium variant implies
+   *  ~0.1 a year to 2100. The decade before 2023 cannot be used (COVID-19 deaths make its trend negative). */
+  mortalityProgress: 0.1,
   /** Post-transition fertility (scenario parameter). UN WPP models fertility after it falls below replacement as
    *  recovering toward a long-run level (Phase III; Alkema et al. 2011, Ševčíková et al. 2015, world mean ≈ 1.75-1.85).
    *  Whether recovery happens is contested: realised fertility in 2010-2023 kept falling in most low-fertility countries.

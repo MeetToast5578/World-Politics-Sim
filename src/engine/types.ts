@@ -1,6 +1,6 @@
 // Shape of public/data/baseline.json (produced by scripts/build-data.mjs).
 
-export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI' | 'ORGS' | 'FLAGS' | 'HDR' | 'HCI' | 'EPR';
+export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI' | 'ORGS' | 'FLAGS' | 'HDR' | 'HCI' | 'EPR' | 'WPP';
 
 /** A sourced observation: value, reference year, source. */
 export interface Obs { v: number; y: number; s: SourceId }
@@ -63,7 +63,7 @@ export interface Baseline {
     generated: string;
     sources: Record<string, { name: string; url: string; license: string }>;
     indicators: Record<string, { source: string; code: string; agg: string }>;
-    curves: Record<'tfr' | 'lifeExpF' | 'lifeExpM' | 'u5mrF' | 'u5mrM' | 'agriShare' | 'industryShare' | 'investment' | 'expectedYears' | 'learning', Curve>;
+    curves: Record<'tfr' | 'lifeExpF' | 'lifeExpM' | 'u5mrF' | 'u5mrM' | 'agriShare' | 'industryShare' | 'investment' | 'expectedYears' | 'learning', Curve> & { mac?: Curve };
     coverage: Record<string, Record<string, number>>;
     baseRates: { alliances: { window: string; accessionsPerYear: number; exitsPerYear: number; newTreatiesPerYear: number };
       window: string; regimeChangePerCountryYear: number; democracyBoundaryPerCountryYear: number; indexRuleCrossingsPerCountryYear: number; demoAbsChangeMedian: number; demoAbsChangeP90: number };
@@ -78,6 +78,8 @@ export interface Baseline {
       grievances: { a: string; b: string; g: number }[];
     };
     /** UCDP armed conflicts: those under way at the reference year, and observed rates over the 34 years before it. */
+    /** UN WPP 2024 medium-variant projections per country (validation only; the simulation never reads them) */
+    unProjections?: Record<string, { pop2050: number; pop2100: number; tfr2050: number; tfr2100: number; e02050: number; e02100: number }>;
     conflict: {
       window: string; deathsWindow: string; nuclear: string[]; battleDeathsPerYear: number;
       interstate: { onsetsPerYear: number; durationYears: Record<string, number>; deaths: Record<string, number> };

@@ -8,7 +8,7 @@ export const FIELDS = [
   // demography: broad-age aggregates (derived from cohorts), vital rates, life-table and fertility parameters
   'p0', 'p1', 'p2', 'tfr', 'lifeExp', 'e0F', 'e0M', 'u5F', 'u5M', 'srb', 'mab', 'fertK',
   'silA1F', 'silA2F', 'silA1M', 'silA2M', 'migRate', 'births', 'deaths', 'netMig', 'phase3Years',
-  'tfrResid', 'e0FResid', 'e0MResid', 'u5FResid', 'u5MResid', 'urban',
+  'tfrResid', 'e0FResid', 'e0MResid', 'u5FResid', 'u5MResid', 'mabResid', 'urban',
   // economy (constant base-year USD, annualised flows)
   'gdp', 'gdpPrevQ', 'gdpPrevY', 'K', 'A', 'tfpDrift', 'cycle', 'gap', 'cycleSd', 'sInv', 'sStruct', 'invResid', 'pppRatio', 'unemp', 'unempStar',
   'lfRate', 'negQ', 'absorb', 'inflation', 'piE', 'oilExp', 'rents', 'agriShare', 'indShare', 'agriResid', 'indResid', 'tradeShare',
