@@ -60,9 +60,14 @@ npm run bench
 npm run backtest -- 20
 ```
 
+```bash
+npm run calibrate
+```
+
 `npm run headless -- <years> <seed>` prints world aggregates per decade, the largest economies and the state hash.
-`npm run data` rebuilds the baseline from the public sources and `npm run data -- --year 2000` the backtest baseline
-(needs network; see [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)). `npm run backtest` regenerates `docs/BACKTEST.md`.
+`npm run data` rebuilds the baseline from the public sources and `npm run data -- --year 2000` / `-- --year 2010` the backtest and calibration baselines
+(needs network; see [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)). `npm run backtest` regenerates `docs/BACKTEST.md`; `npm run calibrate` fits growth parameters on 2000→2010,
+tests them on 2010→2023 and writes `docs/CALIBRATION.md`.
 
 ## Layout
 

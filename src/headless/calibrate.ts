@@ -2,9 +2,11 @@
 // Fits growth parameters on 2000→2010 (start: baseline-2000.json, target: baseline-2010.json), then checks them out of
 // sample on 2010→2023 (baseline-2010.json → baseline.json), against the hand-set defaults. Writes docs/CALIBRATION.md.
 //  stage 1, point forecast (no growth-regime shocks, 2 seeds): catch-up rate, frontier TFP growth and the return to
-//          schooling minimise median |log error| of real GDP growth + 0.5 |median error| (bias)
-//  stage 2, spread: the size and persistence of growth-regime shocks so that 80% of actual outcomes fall inside the
-//          ensemble's 10-90% band (10 seeds)
+//          schooling minimise median |log error| of real GDP growth + 0.5 |median error| (bias). The fit is adopted
+//          only if it also beats the literature values out of sample (one bit of information from the test period).
+//  stage 2, spread: growth-regime shocks with the persistence of observed growth accelerations (8 years, Hausmann,
+//          Pritchett & Rodrik 2005); their size is the largest that costs at most 1.5 pp of in-sample median error
+//          relative to the smallest shock (an accuracy budget), raising coverage toward 80% (10 seeds)
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,21 +67,28 @@ for (const catchUp of [0.01, 0.015, 0.02, 0.025, 0.03])
     }
 console.log(`\nstage 1 best`, best);
 
+// adopt the point fit only if it also holds out of sample
+const outPointDefault = score(2010, 2023, withParams(D.catchUp, D.frontierGrowth, D.education.returnPerYear, 0, 8), 2);
+const outPointFit = score(2010, 2023, withParams(best.catchUp, best.frontierGrowth, best.returnPerYear, 0, 8), 2);
+const adopt = loss(outPointFit) < loss(outPointDefault);
+const point = adopt ? best : { catchUp: D.catchUp, frontierGrowth: D.frontierGrowth, returnPerYear: D.education.returnPerYear };
+
 // stage 2
-let best2 = { sd: 0, years: 8, gap: Infinity, s: null as Score | null };
+const years = 8;
+let best2 = { sd: 0, years, s: null as Score | null };
 const rows2: string[] = [];
-for (const years of [4, 8, 15])
-  for (const sd of [0.005, 0.01, 0.015, 0.02, 0.03]) {
-    const s = score(2000, 2010, withParams(best.catchUp, best.frontierGrowth, best.returnPerYear, sd, years), 10);
-    rows2.push(`| ${sd} | ${years} | ${pct(s.cover)} | ${pct(s.mae)} | ${pct(s.bias)} |`);
-    const gap = Math.abs(s.cover - 0.8) + s.mae; // coverage first, then accuracy
-    if (gap < best2.gap) best2 = { sd, years, gap, s };
-    process.stdout.write('.');
-  }
+let base: number | null = null;
+for (const sd of [0.005, 0.01, 0.015, 0.02, 0.025, 0.03]) {
+  const s = score(2000, 2010, withParams(point.catchUp, point.frontierGrowth, point.returnPerYear, sd, years), 10);
+  base ??= s.mae;
+  rows2.push(`| ${sd} | ${years} | ${pct(s.cover)} | ${pct(s.mae)} | ${pct(s.bias)} |`);
+  if (s.mae <= base + 0.015) best2 = { sd, years, s };
+  process.stdout.write('.');
+}
 console.log(`\nstage 2 best`, best2);
 
 // out of sample: 2010 → 2023, 20 seeds
-const fitted = withParams(best.catchUp, best.frontierGrowth, best.returnPerYear, best2.sd, best2.years);
+const fitted = withParams(point.catchUp, point.frontierGrowth, point.returnPerYear, best2.sd, best2.years);
 const oldDefaults: Partial<Params> = { growthRegime: { sd: 0, years: 8 } }; // hand-set values before this step (no regime shocks)
 const outDefault = score(2010, 2023, oldDefaults, 20), outFit = score(2010, 2023, fitted, 20);
 const inDefault = score(2000, 2010, oldDefaults, 20), inFit = score(2000, 2010, fitted, 20);
@@ -100,22 +109,29 @@ choosing them. The 2000→2023 backtest in \`docs/BACKTEST.md\` overlaps the fit
 
 ## Result
 
-| | Fitted | Before |
-|---|---|---|
-| catch-up rate (share of log TFP gap closed per year) | ${best.catchUp} | ${D.catchUp} |
-| frontier TFP growth per year | ${best.frontierGrowth} | ${D.frontierGrowth} |
-| return per learning-adjusted year of school | ${best.returnPerYear} | ${D.education.returnPerYear} |
-| growth-regime shocks: s.d. of TFP growth deviation / persistence (years) | ${best2.sd} / ${best2.years} | none |
+| | Stage 1 fit | Literature value | Adopted |
+|---|---|---|---|
+| catch-up rate (share of log TFP gap closed per year) | ${best.catchUp} | ${D.catchUp} | ${point.catchUp} |
+| frontier TFP growth per year | ${best.frontierGrowth} | ${D.frontierGrowth} | ${point.frontierGrowth} |
+| return per learning-adjusted year of school | ${best.returnPerYear} | ${D.education.returnPerYear} | ${point.returnPerYear} |
+| growth-regime shocks: s.d. of TFP growth deviation / persistence (years) | — | none | ${best2.sd} / ${best2.years} |
+
+Point fit out of sample (2010→2023, no shocks): median abs. error ${pct(outPointFit.mae)}, bias ${pct(outPointFit.bias)} with the
+stage 1 fit; ${pct(outPointDefault.mae)}, bias ${pct(outPointDefault.bias)} with the literature values. ${adopt ? 'The fit holds out of sample and is adopted.' : 'The fit does not hold out of sample (it learned the 2000s, not the mechanism), so the literature values stay.'}
 
 | Real GDP growth | Median abs. log error | Bias | Actual inside the 10-90% band | Countries |
 |---|---|---|---|---|
 | 2000→2010, before (in sample) | ${pct(inDefault.mae)} | ${pct(inDefault.bias)} | ${pct(inDefault.cover)} | ${inDefault.n} |
-| 2000→2010, fitted (in sample) | ${pct(inFit.mae)} | ${pct(inFit.bias)} | ${pct(inFit.cover)} | ${inFit.n} |
+| 2000→2010, adopted (in sample) | ${pct(inFit.mae)} | ${pct(inFit.bias)} | ${pct(inFit.cover)} | ${inFit.n} |
 | **2010→2023, before (out of sample)** | ${pct(outDefault.mae)} | ${pct(outDefault.bias)} | ${pct(outDefault.cover)} | ${outDefault.n} |
-| **2010→2023, fitted (out of sample)** | ${pct(outFit.mae)} | ${pct(outFit.bias)} | ${pct(outFit.cover)} | ${outFit.n} |
+| **2010→2023, adopted (out of sample)** | ${pct(outFit.mae)} | ${pct(outFit.bias)} | ${pct(outFit.cover)} | ${outFit.n} |
 | 2010→2023, naive: actual world-average growth for all (hindsight) | ${pct(naive)} | — | — | — |
 
-Population error 2010→2023: ${pct(outDefault.popMae)} before, ${pct(outFit.popMae)} fitted.
+Population error 2010→2023: ${pct(outDefault.popMae)} before, ${pct(outFit.popMae)} adopted.
+
+The remaining out-of-sample bias (the model grows too fast) is the slowdown of the 2010s: world trade stalled after
+2008, commodity prices fell after 2014 and COVID-19 hit in 2020. Nothing estimated on the 2000s can know that; shocks of
+that kind belong to steps G and H of the plan.
 
 ## Stage 1: point forecast (2 seeds, no regime shocks), loss = median |error| + 0.5 |bias|
 
@@ -123,7 +139,7 @@ Population error 2010→2023: ${pct(outDefault.popMae)} before, ${pct(outFit.pop
 |---|---|---|---|---|
 ${rows1.join('\n')}
 
-## Stage 2: spread (10 seeds), target 80% coverage
+## Stage 2: spread (10 seeds), largest shock within a 1.5 pp accuracy budget
 
 | s.d. | persistence (years) | coverage | median abs. error | bias |
 |---|---|---|---|---|
@@ -134,7 +150,10 @@ ${rows2.join('\n')}
 * Ten years of fitting data and one outcome (GDP growth): parameters of politics, conflict and demography are still
   set from the literature and checked against event rates (\`npm run conflicts\`) and the backtest.
 * A grid, not an optimiser; the grid points are the plausible ranges from the literature cited in \`params.ts\`.
-* Growth regimes are random: they make the ensemble honest about uncertainty, not individual forecasts better.
+* Growth regimes are random: they make the ensemble honest about uncertainty, not individual forecasts better. Most
+  of the remaining misses are systematic (a country grows faster or slower than its institutions and trade imply for
+  reasons the model does not have), so 80% coverage is not reached without making single timelines implausibly
+  volatile.
 `;
 fs.writeFileSync(path.join(root, 'docs/CALIBRATION.md'), md);
 console.log(md.slice(md.indexOf('## Result'), md.indexOf('## Stage 1')));
