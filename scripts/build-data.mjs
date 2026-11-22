@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { topology } from 'topojson-server';
 import { neighbors, feature, quantize } from 'topojson-client';
 import { geoArea, geoLength, geoCentroid } from 'd3-geo';
@@ -39,6 +40,7 @@ const SOURCES = {
   NE_EST: { name: 'Natural Earth POP_EST / GDP_MD attribute (fallback)', url: 'https://www.naturalearthdata.com/', license: 'Public domain' },
   IMPUTED: { name: 'Imputed: median of countries in the same World Bank region', url: '', license: 'Model assumption' },
   DERIVED: { name: 'Derived from geometry (Natural Earth 1:50m)', url: '', license: 'Public domain' },
+  WPP: { name: 'UN World Population Prospects 2024, demographic indicators, medium variant', url: 'https://population.un.org/wpp/', license: 'CC BY 3.0 IGO' },
   HDR: { name: 'UNDP Human Development Report 2025, composite indices time series (mean and expected years of schooling, from Barro-Lee, UNESCO UIS and others)', url: 'https://hdr.undp.org/data-center/documentation-and-downloads', license: 'CC BY 3.0 IGO' },
   HCI: { name: 'World Bank Human Capital Index (harmonised test scores, Patrinos & Angrist)', url: 'https://www.worldbank.org/en/publication/human-capital', license: 'CC BY 4.0' },
   FLAGS: { name: 'Flag images, flagcdn.com (rendered from Wikimedia Commons flags), used only to derive map colours', url: 'https://flagcdn.com/', license: 'Public domain (national flags)' },
@@ -663,6 +665,27 @@ async function ethnicGroups(countries, regions, provinces) {
   };
 }
 
+// UN World Population Prospects 2024 (medium variant): mean age of childbearing at the reference year (model input),
+// and the UN's projections for 2050 and 2100 (validation only; never read by the simulation)
+async function wpp() {
+  const gz = path.join(CACHE, 'wpp24_indicators.csv.gz');
+  if (!fs.existsSync(gz)) {
+    const r = await fetch('https://population.un.org/wpp/assets/Excel%20Files/1_Indicator%20(Standard)/CSV_FILES/WPP2024_Demographic_Indicators_Medium.csv.gz', { signal: AbortSignal.timeout(300000) });
+    if (!r.ok) throw new Error(`WPP ${r.status}`);
+    fs.writeFileSync(gz, Buffer.from(await r.arrayBuffer()));
+  }
+  const [h, ...rows] = parseCsv(zlib.gunzipSync(fs.readFileSync(gz)).toString('utf8').replace(/^\uFEFF/, ''));
+  const k = Object.fromEntries(h.map((x, i) => [x, i]));
+  const mac = {}, proj = {};
+  for (const r of rows) {
+    const iso = r[k.ISO3_code], y = +r[k.Time];
+    if (!iso || r[k.LocTypeName] !== 'Country/Area') continue;
+    if (y === REF_YEAR) mac[iso] = { v: +r[k.MAC], y };
+    if (y === 2050 || y === 2100) Object.assign(proj[iso] ??= {}, { [`pop${y}`]: +r[k.TPopulation1July] * 1000, [`tfr${y}`]: +r[k.TFR], [`e0${y}`]: +r[k.LEx] });
+  }
+  return { mac, proj };
+}
+
 // Standard deviation of annual real GDP growth over VOL_FROM..VOL_TO (excludes the COVID shock). Needs >= 10 observations.
 async function growthVolatility() {
   const txt = await cached(`wb_growth_${VOL_FROM}_${VOL_TO}.json`, `https://api.worldbank.org/v2/country/all/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=20000&date=${VOL_FROM}:${VOL_TO}&source=2`);
@@ -832,6 +855,8 @@ async function main() {
   ind.vdemEdi = vd.edi; ind.regimeRow = vd.row;
   ind.unIdeal = await ungaIdeal();
   Object.assign(ind, await education());
+  const un = await wpp();
+  ind.mac = un.mac;
   const gov = await wikidataGov([...new Set(regions.map((r) => r.wikidata).filter(Boolean))]);
   console.log();
 
@@ -856,6 +881,7 @@ async function main() {
     schoolYears: ['HDR', 'mys (mean years of schooling, age 25+)', 'wavg'], expectedYears: ['HDR', 'eys (expected years of schooling)', 'wavg'],
     expectedYearsLag: ['HDR', 'eys 15 years before the reference year (1990 at the earliest)', 'wavg'],
     schoolTrend: ['HDR', 'mys: change per year over the previous ten years', 'wavg'],
+    mac: ['WPP', 'MAC (mean age of mothers at childbirth)', 'wavg'],
     learning: ['HCI', 'HD.HCI.HLOS (harmonised test scores, 300-625)', 'wavg'],
   };
   for (const c of countries) {
@@ -927,7 +953,14 @@ async function main() {
     }
     return { knots, n: pts.length, x: 'ln(PPP GDP per capita, current intl $)' };
   };
-  const curves = Object.fromEntries(['tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM', 'agriShare', 'industryShare', 'investment', 'expectedYears', 'learning'].map((k) => [k, curve(k)]));
+  const curves = Object.fromEntries(['tfr', 'lifeExpF', 'lifeExpM', 'u5mrF', 'u5mrM', 'agriShare', 'industryShare', 'investment', 'expectedYears', 'learning', 'mac'].map((k) => [k, curve(k)]));
+  // UN projections per entity (sums over member territories; TFR and life expectancy of the core territory)
+  const unProjections = {};
+  for (const c of countries) {
+    const ps = c.members.map((m) => un.proj[m.dataCode]).filter(Boolean), core = un.proj[c.members[0].dataCode];
+    if (!core) continue;
+    unProjections[c.id] = { pop2050: Math.round(ps.reduce((s, x) => s + x.pop2050, 0)), pop2100: Math.round(ps.reduce((s, x) => s + x.pop2100, 0)), tfr2050: core.tfr2050, tfr2100: core.tfr2100, e02050: core.e02050, e02100: core.e02100 };
+  }
 
   // Curve drift: the same binned curves from a cross-section EARLY_YEAR = REF_YEAR - 10 (latest observation in the five
   // years up to it), interpolated at the later knots. drift[k] = change per year at knot k (log change for TFR and
@@ -1043,7 +1076,7 @@ async function main() {
       indicators: Object.fromEntries(Object.entries(allFields).map(([k, [s, code, agg]]) => [k, { source: s, code, agg }])),
       curves, coverage, baseRates: { ...vd.baseRates, alliances: al.rates }, secularisation,
       diplomacy: { treaties: al.treaties, atopYear: al.atopYear, allianceUpdates: al.notes, sanctions, sanctionsAsOf: sanctionYear, foreignPolicy, grievances },
-      conflict, organisations: orgs, ethnic: { year: eth.year, rates: eth.rates },
+      unProjections, conflict, organisations: orgs, ethnic: { year: eth.year, rates: eth.rates },
       religions: RELIGIONS.map(([, label, family]) => ({ label, family })),
     },
     countries: countries.map(({ members, ...c }) => c),

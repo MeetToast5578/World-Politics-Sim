@@ -161,7 +161,7 @@ export function initDemography(st: WorldState, b: Baseline, p: Params): void {
     f.migRate[c] = (bc.fields.netMigration?.v ?? 0) / P;
     [f.silA1F[c], f.silA2F[c]] = solveSiler(p, f.e0F[c], f.u5F[c]);
     [f.silA1M[c], f.silA2M[c]] = solveSiler(p, f.e0M[c], f.u5M[c]);
-    f.mab[c] = p.fertMean;
+    f.mab[c] = bc.fields.mac?.v ?? p.fertMean; // UN WPP mean age of childbearing
 
     const fShare = v('femaleShare') / 100;
     for (const sex of [FEMALE, MALE]) {
@@ -196,6 +196,7 @@ export function initTransitionResiduals(st: WorldState, b: Baseline): void {
     f.e0MResid[c] = f.e0M[c] - curveAt(cv.lifeExpM, y);
     f.u5FResid[c] = Math.log(f.u5F[c] / (curveAt(cv.u5mrF, y) / 1000));
     f.u5MResid[c] = Math.log(f.u5M[c] / (curveAt(cv.u5mrM, y) / 1000));
+    f.mabResid[c] = cv.mac ? f.mab[c] - curveAt(cv.mac, y) : 0;
   }
 }
 
@@ -286,7 +287,7 @@ export function demographyYearly(st: WorldState, b: Baseline, p: Params): void {
   const dy = p.fertilityDrift.on ? driftYears(st, p) : 0;
   for (let c = 0; c < n; c++) {
     f.migRate[c] *= migDecay;
-    for (const k of ['tfrResid', 'e0FResid', 'e0MResid', 'u5FResid', 'u5MResid'] as const) f[k][c] *= decay;
+    for (const k of ['tfrResid', 'e0FResid', 'e0MResid', 'u5FResid', 'u5MResid', 'mabResid'] as const) f[k][c] *= decay;
     const y = gdpPppPc(st, c);
     // Post-transition ("Phase III", UN WPP): once below replacement, the target blends toward a long-run level.
     if (f.phase3Years[c] > 0 || f.tfr[c] < p.fertilityPhase3.entry) f.phase3Years[c] += 1;
@@ -295,8 +296,10 @@ export function demographyYearly(st: WorldState, b: Baseline, p: Params): void {
     const transition = curveAt(cv.tfr, y, dy) * Math.exp(f.tfrResid[c] - p.education.fertility * (f.eduYears[c] - f.eduYears0[c]));
     const tfrTarget = p.fertilityPhase3.on ? Math.exp(w * Math.log(transition) + (1 - w) * Math.log(p.fertilityPhase3.level)) : transition;
     f.tfr[c] += (tfrTarget - f.tfr[c]) * relax;
-    f.e0F[c] += (curveAt(cv.lifeExpF, y) + f.e0FResid[c] - f.e0F[c]) * relax;
-    f.e0M[c] += (curveAt(cv.lifeExpM, y) + f.e0MResid[c] - f.e0M[c]) * relax;
+    const longevity = p.mortalityProgress * (st.day - st.startDay) / 365.25; // medicine improves at every income level
+    f.e0F[c] += (Math.min(97, curveAt(cv.lifeExpF, y) + longevity) + f.e0FResid[c] - f.e0F[c]) * relax;
+    if (cv.mac) f.mab[c] += (Math.min(34, Math.max(24, curveAt(cv.mac, y) + f.mabResid[c])) - f.mab[c]) * relax; // childbearing is postponed as incomes rise
+    f.e0M[c] += (Math.min(94, curveAt(cv.lifeExpM, y) + longevity) + f.e0MResid[c] - f.e0M[c]) * relax;
     f.u5F[c] += ((curveAt(cv.u5mrF, y) / 1000) * Math.exp(f.u5FResid[c]) - f.u5F[c]) * relax;
     f.u5M[c] += ((curveAt(cv.u5mrM, y) / 1000) * Math.exp(f.u5MResid[c]) - f.u5M[c]) * relax;
     [f.silA1F[c], f.silA2F[c]] = solveSiler(p, f.e0F[c], f.u5F[c], [f.silA1F[c], f.silA2F[c]], 1);

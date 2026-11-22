@@ -120,7 +120,8 @@ mortality   Siler hazard μ(x) = a1·e^(−1.5x) + c + a2·e^(0.09x),   c = 0.02
             a1, a2 solved per country and sex (Newton in log space) so the life table reproduces WDI under-5
             mortality and life expectancy; q(x) = 1 − exp(−∫ μ over [x, x+1))
 ageing      P(x+1, t+1) = P(x, t)·(1 − q(x)),  open group 100+ accumulates
-births      B = κ_f · TFR · Σ g(x) F(x),  g = discretised normal schedule (mean 28, sd 6) over ages 15-49
+births      B = κ_f · TFR · Σ g(x) F(x),  g = discretised normal schedule (mean = the country's mean age of
+            childbearing, UN WPP 2024, relaxing toward its income curve; sd 6) over ages 15-49
             κ_f calibrated so baseline births equal the WDI crude birth rate; sex ratio at birth from WDI
 newborns    P(0) = B_sex · (1 − 0.8·q(0))
 migration   net = rate × P, rate = 9-year WDI average decaying with τ = 25 y; outflows are removed by a fixed age
@@ -129,6 +130,7 @@ transition  TFR, e0 and under-5 mortality (each sex) relax with τ = 15 y toward
             countries vs. log PPP GDP per capita) plus a country residual decaying with τ = 40 y
             TFR curve drifts at the rate estimated from the decade before the baseline (fading, τ = 20 y)
             after TFR first falls below 2.0 the target blends toward a long-run level 1.75 (τ = 50 y; UN WPP "Phase III")
+            e0 targets rise 0.1 year a year at every income (mortality progress), capped at 97 (women) and 94 (men)
 ```
 
 Initial single-year ages come from WDI 5-year groups (uniform within each group; the 80+ group is spread by
@@ -137,12 +139,16 @@ life-table survivorship).
 **Drift estimation.** For each country, the 10-year change in TFR (or e0, u5) not explained by its income growth
 along the curve is computed; the median per income tercile is the drift. For TFR the estimate is consistent in sign
 across 1990-2000 and 2013-2023 (−0.6 to −1.5 %/yr), and it is applied. For life expectancy and child mortality it
-changes sign between the two windows (AIDS in the 1990s, COVID in 2020-22), so mortality drift is **not** applied;
-the backtest shows the cost of that choice (life expectancy under-predicted by ~4 years over 23 years).
+changes sign between the two windows (AIDS in the 1990s, COVID in 2020-22), so the measured mortality drift is **not**
+applied. Instead life expectancy gains a fixed 0.1 year a year at every income level (Oeppen & Vaupel 2002; the pace
+the UN's medium variant implies to 2100). This cut the backtest's life-expectancy error from 4.3 to 3.3 years.
 
-**Limitations:** no secular mortality improvement independent of income (deferred to the Phase 5 health-technology
-model); one fertility timing schedule for all countries (WDI adolescent fertility, which would pin it per country,
-returns HTTP 400 from the API); migration has no push/pull model; income curves are cross-sectional correlations.
+**Long run against the UN** (`npm run un`, `docs/UN_COMPARISON.md`): world population 9.65 billion in 2050 and
+10.46 billion in 2100 against the UN's 9.73 and 10.26. Per country the median gap is 3% in 2050 and 15% in 2100;
+fertility is within 0.17 children per woman and life expectancy within 1.5-2.7 years.
+
+**Limitations:** mortality progress is one rate for all (a health-technology model would make it endogenous); the
+fertility schedule has one shape (normal, sd 6), only its mean differs between countries; migration has no push/pull model; income curves are cross-sectional correlations.
 
 ### 3.2 Economy, trade, prices and public finance [implemented, Phase 2]
 
