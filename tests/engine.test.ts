@@ -12,6 +12,7 @@ import { applyTradeEffects, pairOf } from '../src/engine/systems/diplomacy';
 import { transferTerritory } from '../src/engine/systems/conflict';
 import { educationYearly, humanCapital } from '../src/engine/systems/education';
 import { exclusion, rebelGroup } from '../src/engine/systems/ethnic';
+import { leaderAge, newLeader } from '../src/engine/systems/leaders';
 
 const b = loadBaseline();
 const years = (sim: Simulation, n: number) => sim.advanceTo(addMonths(sim.st.day, 12 * n));
@@ -336,6 +337,27 @@ describe('ethnic groups', () => {
     // save / load keeps the groups
     const again = loadWorld(b, saveWorld(sim));
     expect(again.st.groups).toEqual(st.groups);
+  });
+});
+
+describe('leaders', () => {
+  it('start with the real leader and are replaced by simulated ones', () => {
+    const sim = new Simulation(b, { seed: 1 }), st = sim.st, usa = st.ids.indexOf('USA');
+    expect(b.countries[usa].leader?.name).toBeTruthy();
+    expect(st.f.leaderReal[usa]).toBe(1);
+    expect(leaderAge(st, usa)).toBeGreaterThan(30);
+    newLeader(st, sim.params, usa);
+    expect(st.f.leaderReal[usa]).toBe(0);
+    expect(st.f.leaderSince[usa]).toBe(st.day);
+    expect(leaderAge(st, usa)).toBeGreaterThanOrEqual(32);
+  });
+  it('leaders come and go: after 40 years few of the 2023 leaders are left, and none is older than 110', () => {
+    const sim = new Simulation(b, { seed: 3 });
+    years(sim, 40);
+    const st = sim.st;
+    expect(st.f.leaderReal.reduce((a, x) => a + x, 0)).toBeLessThan(10);
+    for (let c = 0; c < st.n; c++) expect(leaderAge(st, c)).toBeLessThan(110);
+    expect(st.events.some((e) => e.k === 'leader_died' || e.k === 'leader_retired')).toBe(true);
   });
 });
 

@@ -95,7 +95,7 @@ export function App() {
   const name = useCallback((c: number) => baseline?.countries[c]?.name ?? '?', [baseline]);
   nameRef.current = name;
   const groupNames = useMemo(() => (baseline0 ? baseline0.countries.flatMap((c) => (c.groups ?? []).map((g) => g.name)) : []), [baseline0]); // same order as the engine's groups
-  const news = useMemo(() => ({ org: (o: number) => baseline?.meta.organisations[o]?.name ?? '?', party: (c: number) => baseline?.countries[c]?.rulingParty?.name, group: (g: number) => groupNames[g] ?? 'A group' }), [baseline, groupNames]);
+  const news = useMemo(() => ({ org: (o: number) => baseline?.meta.organisations[o]?.name ?? '?', party: (c: number) => baseline?.countries[c]?.rulingParty?.name, group: (g: number) => groupNames[g] ?? 'A group', leader: (c: number) => baseline?.countries[c]?.leader?.name }), [baseline, groupNames]);
   newsRef.current = news;
   // provinces with their current owners (the worker sends owners only when they change)
   const owners = useRef<number[]>([]);

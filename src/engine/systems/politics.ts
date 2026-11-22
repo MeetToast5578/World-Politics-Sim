@@ -17,6 +17,7 @@
 //   regime      categories follow the democracy index with hysteresis (democratisation / autocratisation events)
 // Democracy diffuses slowly toward the average of trading partners and neighbours (Gleditsch & Ward 2006).
 import type { Baseline } from '../types';
+import { newLeader } from './leaders';
 import type { Params } from '../params';
 import type { Rng } from '../rng';
 import type { WorldState, SimEvent } from '../state';
@@ -83,12 +84,13 @@ export const coupHazard = (st: WorldState, p: Params, c: number) => p.politics.c
 function emit(st: WorldState, e: Omit<SimEvent, 'd'>) { st.events.push({ d: st.day, ...e }); }
 
 /** New government: ideology swings away from the predecessor (plus noise), honeymoon approval, tenure reset. */
-function changeGovernment(st: WorldState, c: number, noise: number, approval: number) {
+function changeGovernment(st: WorldState, p: Params, c: number, noise: number, approval: number) {
   const f = st.f;
   f.ideology[c] = clamp(-0.5 * f.ideology[c] + 0.35 * noise, -1, 1);
   f.approval[c] = approval;
   f.govYears[c] = 0;
   f.govTerms[c] = 0;
+  newLeader(st, p, c);
 }
 
 export function politicsQuarterly(st: WorldState, p: Params, rng: Rng, trade: TradeNet): void {
@@ -160,7 +162,7 @@ export function politicsQuarterly(st: WorldState, p: Params, rng: Rng, trade: Tr
       if (uElec < pWin) { f.govTerms[c] += 1; const res = holdElection(st, c, true, uElec); emit(st, { k: 'election_won', c, v: pWin, x: { ...x(), ...res } }); }
       else {
         const before = f.ideology[c];
-        changeGovernment(st, c, uGov, 0.6);
+        changeGovernment(st, p, c, uGov, 0.6);
         const res = holdElection(st, c, false, uElec); // the parties decide who governs and the new orientation
         emit(st, { k: 'election_lost', c, v: pWin, x: { ...x(), ideology: before, ...res } });
         // turnover restores constraints eroded by the outgoing government ("U-turns", Nord et al. 2024)
@@ -177,7 +179,7 @@ export function politicsQuarterly(st: WorldState, p: Params, rng: Rng, trade: Tr
         emit(st, { k: 'coup', c, x: ev });
         f.regime[c] = 0; f.demo[c] *= P.coup.demoFactor; f.legit[c] = Math.min(f.legit[c], 0.35); f.coupMem[c] += 1;
         f.unrest[c] = clamp(f.unrest[c] + 0.1); f.cycle[c] -= P.coup.outputLoss; f.nextElection[c] = -1;
-        changeGovernment(st, c, uGov, 0.45); seizePower(st, c, true);
+        changeGovernment(st, p, c, uGov, 0.45); seizePower(st, c, true);
       } else {
         emit(st, { k: 'coup_failed', c, x: ev });
         f.coupMem[c] += 0.5; f.unrest[c] = clamp(f.unrest[c] + 0.05);
@@ -193,15 +195,15 @@ export function politicsQuarterly(st: WorldState, p: Params, rng: Rng, trade: Tr
         if (f.regime[c] >= 2) {
           emit(st, { k: 'government_collapse', c, x: ev });
           f.nextElection[c] = st.day + 180; // early elections
-          changeGovernment(st, c, uGov, 0.55);
+          changeGovernment(st, p, c, uGov, 0.55);
         } else if (uUpKind < P.uprising.democraticShare + 0.4 * f.demo[c]) {
           emit(st, { k: 'revolution', c, x: ev });
           f.regime[c] = 2; f.demo[c] = Math.max(f.demo[c], 0.55); f.nextElection[c] = st.day + 365;
-          changeGovernment(st, c, uGov, 0.65);
+          changeGovernment(st, p, c, uGov, 0.65);
         } else {
           emit(st, { k: 'regime_overthrown', c, x: ev });
           f.regime[c] = Math.min(f.regime[c], 1);
-          changeGovernment(st, c, uGov, 0.5); seizePower(st, c, false);
+          changeGovernment(st, p, c, uGov, 0.5); seizePower(st, c, false);
         }
         f.unrest[c] = 0.4; f.legit[c] = 0.4; f.cycle[c] -= P.uprising.outputLoss;
       }

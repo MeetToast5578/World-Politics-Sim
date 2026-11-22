@@ -56,6 +56,15 @@ export const DEFAULT_PARAMS = {
    *  Wimmer 2013); militaryExclusion: multiplier on exclusion under military or junta rule (assumption). */
   ethnic: { democracyInclusion: 2.0, democracyExclusion: 2.0, militaryExclusion: 2.0 },
 
+  /** Leaders (systems/leaders.ts). entryAge, entryAgeSd: age of new leaders (Archigos 1975-2015 median 54; sd an
+   *  assumption). eliteMortality: leaders' death rate relative to the country's men of the same age, set so deaths in
+   *  office match Archigos' 5% of exits (leaders are richer and better treated). illHealth: retirements for ill health per natural death (Archigos
+   *  1975-2015: 1.8% vs 5.0% of exits). handover: yearly chance that a democratic governing party replaces its leader,
+   *  × handoverLong after handoverYears in office (term limits, leadership contests; set so tenures match Archigos'
+   *  median of 3 years with npm run leaders). succession: effects of an autocrat's death in office (assumption). */
+  leaders: { entryAge: 54, entryAgeSd: 9, eliteMortality: 0.5, illHealth: 0.36, handover: 0.15, handoverYears: 8, handoverLong: 3,
+    succession: { legitimacy: 0.15, coupMemory: 0.5, unrest: 0.05 } },
+
   // --- economy (Solow growth with technology diffusion) ---
   /** Capital share in Cobb-Douglas output. Gollin (2002) finds ~0.3-0.4 after correcting for self-employment. */
   alpha: 0.35,

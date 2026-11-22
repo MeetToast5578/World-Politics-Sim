@@ -20,7 +20,8 @@ military aid, nuclear deterrence, peace deals, ceasefires, annexations of provin
 territory, and new states born from secession); education (adults' years of schooling, children's expected years
 and harmonised test scores, feeding productivity, fertility, democracy and civil-war risk); ethnic groups from Ethnic
 Power Relations (745 groups, who holds power and who is shut out, homelands on the map), with exclusion driving
-rebellion and separatism; an event
+rebellion and separatism; real leaders at the start (Biden, Xi, Putin, Modi…) who age, die, retire or are replaced,
+with succession crises in autocracies; an event
 chronicle that records the causes of each event; pause/play/speed/step, save/load, rewind and branching timelines.
 The map is alive: country names, ripples where news happens, pulsing conflicts, front lines and occupied or rebel-held
 provinces. The interface is written for people, not modellers: plain-language news with a "why" for every event, eight main maps
@@ -68,11 +69,15 @@ npm run calibrate
 npm run un
 ```
 
+```bash
+npm run leaders
+```
+
 `npm run headless -- <years> <seed>` prints world aggregates per decade, the largest economies and the state hash.
 `npm run data` rebuilds the baseline from the public sources and `npm run data -- --year 2000` / `-- --year 2010` the backtest and calibration baselines
 (needs network; see [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)). `npm run backtest` regenerates `docs/BACKTEST.md`; `npm run calibrate` fits growth parameters on 2000→2010,
 tests them on 2010→2023 and writes `docs/CALIBRATION.md`; `npm run un` compares 2050 and 2100 with the UN's
-projections (`docs/UN_COMPARISON.md`).
+projections (`docs/UN_COMPARISON.md`); `npm run leaders` checks leader turnover against Archigos.
 
 ## Layout
 

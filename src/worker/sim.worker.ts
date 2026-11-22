@@ -134,7 +134,7 @@ function frame(): Frame {
     const series: Record<string, number[]> = {};
     for (const k of HIST_FIELDS) series[k] = Array.from({ length: H }, (_, y) => st.history.data[k][y * st.n + c]);
     const cohort = (sex: number) => Array.from(st.cohorts.subarray(cohortIndex(c, sex), cohortIndex(c, sex) + AGES));
-    fr.detail = { c, fields: Object.fromEntries(FIELDS.map((k) => [k, st.f[k][c]])), history: { years: st.history.years, series }, pyramid: { f: cohort(0), m: cohort(1) },
+    fr.detail = { c, day: st.day, fields: Object.fromEntries(FIELDS.map((k) => [k, st.f[k][c]])), history: { years: st.history.years, series }, pyramid: { f: cohort(0), m: cohort(1) },
       religion: Array.from(st.religion.subarray(c * st.nRel, (c + 1) * st.nRel)), diplomacy: diplomacyDetail(c),
       orgs: Array.from(st.orgMember.subarray(c * st.nOrg, (c + 1) * st.nOrg)),
       groups: st.groups.flatMap((g, i) => (g.c === c ? [{ i, name: g.name, size: g.size, status: g.status, aut: g.aut }] : [])).sort((a, z) => z.size - a.size) };

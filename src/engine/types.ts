@@ -1,6 +1,6 @@
 // Shape of public/data/baseline.json (produced by scripts/build-data.mjs).
 
-export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI' | 'ORGS' | 'FLAGS' | 'HDR' | 'HCI' | 'EPR' | 'WPP';
+export type SourceId = 'NE' | 'WDI' | 'WGI' | 'IMF' | 'WD' | 'NE_EST' | 'IMPUTED' | 'DERIVED' | 'VDEM' | 'WRP' | 'PROXY' | 'CIA_WFB' | 'ATOP' | 'UNGA' | 'CURATED' | 'UCDP' | 'SIPRI' | 'ORGS' | 'FLAGS' | 'HDR' | 'HCI' | 'EPR' | 'WPP' | 'ARCHIGOS';
 
 /** A sourced observation: value, reference year, source. */
 export interface Obs { v: number; y: number; s: SourceId }
@@ -27,6 +27,9 @@ export interface BaselineCountry {
    *  1 powerless or self-excluded, 2 junior partner or contested, 3 senior partner, 4 dominant or monopoly), regional
    *  autonomy, homeland provinces (indices into Baseline.provinces; GeoEPR), regional = has a homeland */
   groups?: { name: string; size: number; status: number; aut: number; regional: boolean; provinces: number[]; down?: number | null }[]; // down: last year it lost power
+  /** the leader at the end of the reference year (Wikidata; head of state in presidential, semi-presidential,
+   *  one-party and military systems, head of government otherwise); null where unknown */
+  leader?: { name: string; born: number; since: string | null; role: 'hos' | 'hog'; s: SourceId } | null;
   /** map colour derived from the flag (FLAGS), toned for the map; new states inherit their parent's */
   colour?: string;
 }
@@ -79,6 +82,8 @@ export interface Baseline {
     };
     /** UCDP armed conflicts: those under way at the reference year, and observed rates over the 34 years before it. */
     /** UN WPP 2024 medium-variant projections per country (validation only; the simulation never reads them) */
+    /** Archigos base rates (validation of systems/leaders.ts) */
+    leaders?: { archigos: { period: string; exits: number; exitShares: Record<string, number>; medianTenure: number; medianEntryAge: number; medianExitAge: number } };
     unProjections?: Record<string, { pop2050: number; pop2100: number; tfr2050: number; tfr2100: number; e02050: number; e02100: number }>;
     conflict: {
       window: string; deathsWindow: string; nuclear: string[]; battleDeathsPerYear: number;

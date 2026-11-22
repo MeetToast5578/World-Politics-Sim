@@ -40,6 +40,7 @@ const SOURCES = {
   NE_EST: { name: 'Natural Earth POP_EST / GDP_MD attribute (fallback)', url: 'https://www.naturalearthdata.com/', license: 'Public domain' },
   IMPUTED: { name: 'Imputed: median of countries in the same World Bank region', url: '', license: 'Model assumption' },
   DERIVED: { name: 'Derived from geometry (Natural Earth 1:50m)', url: '', license: 'Public domain' },
+  ARCHIGOS: { name: 'Archigos 4.1, a data set on leaders 1875-2015 (Goemans, Gleditsch & Chiozza 2009)', url: 'http://ksgleditsch.com/archigos.html', license: 'Free for research with citation' },
   WPP: { name: 'UN World Population Prospects 2024, demographic indicators, medium variant', url: 'https://population.un.org/wpp/', license: 'CC BY 3.0 IGO' },
   HDR: { name: 'UNDP Human Development Report 2025, composite indices time series (mean and expected years of schooling, from Barro-Lee, UNESCO UIS and others)', url: 'https://hdr.undp.org/data-center/documentation-and-downloads', license: 'CC BY 3.0 IGO' },
   HCI: { name: 'World Bank Human Capital Index (harmonised test scores, Patrinos & Angrist)', url: 'https://www.worldbank.org/en/publication/human-capital', license: 'CC BY 4.0' },
@@ -471,6 +472,54 @@ async function rulingParties(regions, countries) {
     out[c.id] = { name: pick.name, family, pos: +p.toFixed(2), s: 'WD' };
   }
   return out;
+}
+
+// --- Leaders: the person in charge at the end of the reference year (Wikidata), and Archigos base rates -----------
+// The effective leader follows the same rule as the ruling party: head of state in presidential, semi-presidential,
+// one-party and military systems, head of government otherwise.
+async function leaders(regions, countries) {
+  const at = `"${REF_YEAR}-12-31T00:00:00Z"^^xsd:dateTime`;
+  const qids = [...new Set(regions.filter((r) => r.wikidata && r.owner === r.id).map((r) => r.wikidata))];
+  const byQ = new Map(regions.map((r) => [r.wikidata, r.owner]));
+  const rows = [];
+  for (const [role, prop] of [['hog', 'P6'], ['hos', 'P35']]) for (let k = 0; k < qids.length; k += 40) {
+    const txt = await cached(`wd_leader_${REF_YEAR}_${role}_${k}.json`, 'https://query.wikidata.org/sparql', { method: 'POST', headers: { Accept: 'application/sparql-results+json', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'query=' + encodeURIComponent(`SELECT ?c ?p ?pLabel ?born ?s0 WHERE { VALUES ?c { ${qids.slice(k, k + 40).map((x) => 'wd:' + x).join(' ')} }
+      ?c p:${prop} ?s . ?s ps:${prop} ?p . OPTIONAL { ?s pq:P580 ?s0 } OPTIONAL { ?s pq:P582 ?s1 }
+      FILTER((!BOUND(?s0) || ?s0 <= ${at}) && (!BOUND(?s1) || ?s1 > ${at})) OPTIONAL { ?p wdt:P569 ?born }
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul". } }`) });
+    for (const x of JSON.parse(txt).results.bindings) {
+      const id = byQ.get(x.c.value.split('/').pop());
+      if (!id || /^Q\d+$/.test(x.pLabel.value)) continue;
+      rows.push({ id, role, name: x.pLabel.value, born: x.born ? +x.born.value.slice(0, 4) : null, since: x.s0 ? x.s0.value.slice(0, 10) : null });
+    }
+  }
+  const out = {};
+  for (const c of countries) {
+    const pres = ['presidential', 'semi_presidential', 'one_party', 'military'].includes(c.government.form);
+    const mine = rows.filter((r) => r.id === c.id), order = pres ? ['hos', 'hog'] : ['hog', 'hos'];
+    const pick = mine.filter((r) => r.role === order[0]).sort((a, b) => (b.since ?? '').localeCompare(a.since ?? ''))[0] ?? mine.find((r) => r.role === order[1]);
+    if (pick && pick.born && pick.born > REF_YEAR - 100) out[c.id] = { name: pick.name, born: pick.born, since: pick.since, role: pick.role, s: 'WD' };
+  }
+  return out;
+}
+
+/** Archigos 4.1 (Goemans, Gleditsch & Chiozza 2009): leaders who left office 1975-2015, by how they left, their tenure
+ *  and their age at entry and exit (validation targets for systems/leaders.ts). */
+async function archigos() {
+  const [h, ...rows] = (await cached('archigos41.txt', 'http://ksgleditsch.com/data/1March_Archigos_4.1.txt')).trim().split(/\r?\n/).map((l) => l.split('\t'));
+  const k = Object.fromEntries(h.map((x, i) => [x, i]));
+  const exits = {}, tenure = [], entryAge = [], exitAge = [];
+  for (const r of rows) {
+    const end = +r[k.enddate].slice(0, 4), start = +r[k.startdate].slice(0, 4), born = +r[k.yrborn];
+    if (!(end >= 1975 && end <= 2015) || r[k.exit] === 'Still in Office') continue;
+    exits[r[k.exit]] = (exits[r[k.exit]] ?? 0) + 1;
+    tenure.push((Date.parse(r[k.enddate]) - Date.parse(r[k.startdate])) / 3.15576e10);
+    if (born > 1800) { entryAge.push(start - born); exitAge.push(end - born); }
+  }
+  const med = (xs) => { const t = xs.slice().sort((a, b) => a - b); return +t[t.length >> 1].toFixed(1); };
+  const n = tenure.length;
+  return { period: '1975-2015', exits: n, exitShares: Object.fromEntries(Object.entries(exits).map(([e, x]) => [e, +(x / n).toFixed(3)])), medianTenure: med(tenure), medianEntryAge: med(entryAge), medianExitAge: med(exitAge) };
 }
 
 // --- UN General Assembly ideal points (foreign-policy position) ----------------------------
@@ -1026,6 +1075,9 @@ async function main() {
   const orgs = organisations(countries);
   const ruling = await rulingParties(regions, countries);
   for (const c of countries) c.rulingParty = ruling[c.id] ?? null;
+  const lead = await leaders(regions, countries), arch = await archigos();
+  for (const c of countries) c.leader = lead[c.id] ?? null;
+  console.log('leaders', Object.keys(lead).length, ['USA', 'CHN', 'RUS', 'IND', 'GBR', 'DEU', 'SAU', 'FRA'].map((id) => `${id}:${lead[id]?.name}`).join(' '), 'archigos', JSON.stringify(arch));
   console.log('ruling parties', Object.keys(ruling).length, ['IND', 'DEU', 'USA', 'GBR', 'TUR', 'CHN'].map((id) => `${id}:${ruling[id]?.name}/${ruling[id]?.family}`).join(' '));
   console.log('organisations', orgs.map((o) => `${o.id}:${o.members.length}${o.members.some((m) => m.suspended) ? '(' + o.members.filter((m) => m.suspended).length + ' suspended)' : ''}`).join(' '));
   console.log('conflict', JSON.stringify({ ...conflict, active: conflict.active.length }), conflict.active.map((x) => `${x.kind[0]}:${x.loc}${x.kind === 'interstate' ? '<' + x.a : ''}:${x.deaths}`).join(' '));
@@ -1076,7 +1128,7 @@ async function main() {
       indicators: Object.fromEntries(Object.entries(allFields).map(([k, [s, code, agg]]) => [k, { source: s, code, agg }])),
       curves, coverage, baseRates: { ...vd.baseRates, alliances: al.rates }, secularisation,
       diplomacy: { treaties: al.treaties, atopYear: al.atopYear, allianceUpdates: al.notes, sanctions, sanctionsAsOf: sanctionYear, foreignPolicy, grievances },
-      unProjections, conflict, organisations: orgs, ethnic: { year: eth.year, rates: eth.rates },
+      unProjections, leaders: { archigos: arch }, conflict, organisations: orgs, ethnic: { year: eth.year, rates: eth.rates },
       religions: RELIGIONS.map(([, label, family]) => ({ label, family })),
     },
     countries: countries.map(({ members, ...c }) => c),

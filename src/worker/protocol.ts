@@ -18,6 +18,7 @@ export type ToWorker =
 
 export interface CountryDetail {
   c: number;
+  day: number;                            // simulation day the detail was taken
   fields: Record<string, number>;
   history: { years: number[]; series: Record<string, number[]> };
   pyramid: { f: number[]; m: number[] }; // persons by single year of age 0..100+

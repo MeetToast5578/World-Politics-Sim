@@ -20,6 +20,7 @@ import { initDemography, initTransitionResiduals, demographyYearly } from './sys
 import { initEconomy, initEconomyResiduals, economyQuarterly, economyYearly } from './systems/economy';
 import { initEducation, educationYearly } from './systems/education';
 import { initEthnic, ethnicYearly, rescaleGroups } from './systems/ethnic';
+import { initLeaders, leadersYearly, newLeader } from './systems/leaders';
 import { buildTrade, type TradeNet } from './systems/trade';
 import { initReligion, religionYearly } from './systems/religion';
 import { initPolitics, politicsQuarterly } from './systems/politics';
@@ -32,7 +33,7 @@ import { initOrganisations, organisationsYearly } from './systems/organisations'
 import { initParties, seizePower } from './systems/parties';
 import { aggregate } from './systems/demography';
 
-export const RNG_STREAMS = ['economy', 'commodity', 'politics', 'diplomacy', 'conflict', 'organisations', 'parties', 'ethnic'] as const;
+export const RNG_STREAMS = ['economy', 'commodity', 'politics', 'diplomacy', 'conflict', 'organisations', 'parties', 'ethnic', 'leaders'] as const;
 
 export interface SimConfig { seed: number; startDate?: string; params?: Partial<Params> }
 
@@ -73,6 +74,7 @@ export class Simulation {
     initOrganisations(this.st, baseline);
     initDiplomacy(this.st, baseline, this.params, this.trade, this.pairs);
     this.cnet = buildConflictNet(baseline);
+    initLeaders(this.st, baseline, this.params);
     initEthnic(this.st, baseline, this.params);
     initConflict(this.st, baseline, this.params, this.cnet, this.pairs);
     chronicleYearly(this.st); // establishes milestone levels at t0 without emitting
@@ -118,6 +120,7 @@ export class Simulation {
       religionYearly(st, this.baseline, p);
       diplomacyYearly(st, this.baseline, p, this.rngs.diplomacy, this.trade, this.pairs);
       organisationsYearly(st, this.baseline, p, this.rngs.organisations, this.pairs);
+      leadersYearly(st, p, this.rngs.leaders);
       ethnicYearly(st, this.baseline, p, this.rngs.ethnic);
       conflictYearly(st, p, this.rngs.conflict, this.cnet, this.pairs);
       applyTradeEffects(st, p, this.trade, this.pairs); // new wars cut trust between belligerents: trade follows at once
@@ -185,6 +188,7 @@ export class Simulation {
     const democratic = r.u < this.params.conflict.outcome.secessionDemocratic;
     f.regime[c] = democratic ? 2 : 0; f.demo[c] = f.demo0[c] = democratic ? Math.max(0.5, f.demo[parent]) : Math.min(0.3, f.demo[parent]);
     f.legit[c] = f.legit0[c] = 0.45; f.unrest[c] = f.unrest0[c] = 0.35; f.approval[c] = 0.65; f.perf[c] = 0.5;
+    newLeader(st, this.params, c);
     f.govYears[c] = 0; f.govTerms[c] = 0; f.coupMem[c] = 0.5; f.warMem[c] = 1; f.warLoad[c] = f.warLoad0[c] = 0;
     if (!democratic) seizePower(st, c, false);
     f.nextElection[c] = democratic ? st.day + 365 : -1; f.debtRatio0[c] = 0; f.unSanction[c] = 0; f.sanctionLoad[c] = 0;

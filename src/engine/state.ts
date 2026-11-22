@@ -28,6 +28,8 @@ export const FIELDS = [
   'v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'govLead', 'govMask', 'relFam', 'propRep',
   // 1 while the real party that governed at the start (baseline rulingParty) is still in power
   'realParty',
+  // leader (systems/leaders.ts): birth day, day in office, 1 while the real leader of the start is still in office
+  'leaderBorn', 'leaderSince', 'leaderReal',
   // diplomacy: foreign-policy (UN voting) position, sanction pressure (share of world GDP sanctioning, × intensity)
   'fp', 'fp0', 'sanctionLoad', 'demoPrevY', 'unSanction',
   // education (systems/education.ts): adults' mean years of schooling (25+) and its start value, children's expected years

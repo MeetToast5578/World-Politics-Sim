@@ -13,7 +13,7 @@ const years = (y: number) => (y < 1 ? `${Math.max(1, Math.round(y * 12))} month$
 const relation = (t: number) => (t < -0.5 ? 'deep distrust' : t < 0 ? 'mutual distrust' : t < 0.4 ? 'lukewarm relations' : 'good relations');
 
 /** Names the news needs besides countries: organisations, and the real ruling party of a country (start data). */
-export interface NewsContext { org?: (o: number) => string; party?: (c: number) => string | null | undefined; group?: (g: number) => string }
+export interface NewsContext { org?: (o: number) => string; party?: (c: number) => string | null | undefined; group?: (g: number) => string; leader?: (c: number) => string | null | undefined }
 
 export function describeEvent(e: SimEvent, name: (c: number) => string, ctx: NewsContext = {}): Story {
   const org = ctx.org ?? (() => 'an international organisation');
@@ -112,6 +112,14 @@ export function describeEvent(e: SimEvent, name: (c: number) => string, ctx: New
       return s(`${c} annexes territory from ${o}`, `It keeps the ${x.provinces > 1 ? `${x.provinces} provinces` : 'province'} its army holds, home to ${people(e.v!)} people (${pct(x.share)} of ${o}'s population).`);
     case 'regime_imposed':
       return s(`${c} installs a new government in ${o}`, `After defeating ${o}'s army.`);
+    case 'leader_died': {
+      const who = (x.real && ctx.leader?.(e.c)) || `${c}'s leader`;
+      return s(`${who} dies in office at ${Math.floor(e.v!)}`, x.autocracy ? `After ${years(x.tenure)} in power. With no settled way to choose a successor, a struggle for power begins.` : `After ${years(x.tenure)} in office. A successor takes over.`);
+    }
+    case 'leader_retired':
+      return s(`${(x.real && ctx.leader?.(e.c)) || `${c}'s leader`} steps down for health reasons`, `At ${Math.floor(e.v!)}, after ${years(x.tenure)} in office.`);
+    case 'leader_handover':
+      return s(`${(x.real && ctx.leader?.(e.c)) || `${c}'s leader`} hands over to a successor`, `After ${years(e.v!)} in office; the governing party stays in power.`);
     case 'group_included':
       return s(`${grp(e.v) ?? 'An excluded group'} gain a share of power in ${c}`, `${pct(x.size)} of the population, until now kept out of government.${x.demo > 0.5 ? ' Democracies include more groups.' : ''}`);
     case 'group_excluded':
@@ -140,7 +148,7 @@ export const eventText = (e: SimEvent, name: (c: number) => string, ctx?: NewsCo
 export const IMPORTANCE: Record<string, number> = {
   oil_shock: 3, war_started: 3, war_joined: 3, war_won: 3, ceasefire: 3, territory_annexed: 3, regime_imposed: 3, nuclear_strike: 3,
   rebels_won: 3, civil_war_escalated: 3, independence: 3,
-  group_included: 2, group_excluded: 2, org_joined: 2, org_left: 2, org_suspended: 2, org_readmitted: 1, coup: 3, revolution: 3, regime_overthrown: 3, sovereign_default: 3, alliance_joined: 3, alliance_left: 3, alliance_formed: 3,
+  leader_died: 2, leader_retired: 1, leader_handover: 1, group_included: 2, group_excluded: 2, org_joined: 2, org_left: 2, org_suspended: 2, org_readmitted: 1, coup: 3, revolution: 3, regime_overthrown: 3, sovereign_default: 3, alliance_joined: 3, alliance_left: 3, alliance_formed: 3,
   gdp_rank_up: 2, democratization: 2, autocratization: 2, government_collapse: 2, election_lost: 2, diplomatic_crisis: 2, sanctions_imposed: 2, un_sanctions_lifted: 2,
   civil_war_started: 2, civil_war_won: 2, autonomy_won: 2, peace_deal: 2, conflict_faded: 1,
   pop_peak: 2, inflation_high: 2, recession_start: 2, protests: 2, coup_failed: 2, elections_restored: 2,
