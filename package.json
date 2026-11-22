@@ -15,7 +15,8 @@
     "backtest": "tsx src/headless/backtest.ts",
     "conflicts": "tsx src/headless/conflictProbe.ts",
     "calibrate": "tsx src/headless/calibrate.ts",
-    "un": "tsx src/headless/unCompare.ts"
+    "un": "tsx src/headless/unCompare.ts",
+    "leaders": "tsx src/headless/leadersProbe.ts"
   },
   "dependencies": {
     "@fontsource/lexend": "^5.2.11",

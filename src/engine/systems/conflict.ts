@@ -28,6 +28,7 @@ import { religionIndices } from './religion';
 import { pairOf, allyFlags, type PairNet } from './diplomacy';
 import { seizePower } from './parties';
 import { exclusion, rebelGroup } from './ethnic';
+import { newLeader } from './leaders';
 
 const MONTH = 1 / 12;
 const logistic = (x: number) => 1 / (1 + Math.exp(-x));
@@ -340,8 +341,9 @@ function strength(st: WorldState, p: Params, net: ConflictNet, pn: PairNet, w: W
   return [A, B];
 }
 
-function changeGovernment(st: WorldState, c: number) {
+function changeGovernment(st: WorldState, p: Params, c: number) {
   const f = st.f;
+  newLeader(st, p, c);
   f.govYears[c] = 0; f.govTerms[c] = 0; f.approval[c] = 0.5; f.legit[c] = Math.min(f.legit[c], 0.4);
 }
 
@@ -358,7 +360,7 @@ function endWar(st: WorldState, p: Params, net: ConflictNet, w: War, u: number, 
       if (w.goal === 'government') {
         const democratic = u < 0.25;
         emit(st, { k: 'rebels_won', c: loser, v: democratic ? 1 : 0, x });
-        changeGovernment(st, loser);
+        changeGovernment(st, p, loser);
         // the rebels' group takes power; the groups that held it lose it
         if (w.group != null && w.group >= 0 && st.groups[w.group].c === loser) {
           for (const g of st.groups) if (g.c === loser && g.status >= 3) { g.status = 1; g.down = st.day; }
@@ -394,7 +396,7 @@ function endWar(st: WorldState, p: Params, net: ConflictNet, w: War, u: number, 
     }
     if (!ceasefire && w.score > 0 && w.goal === 'government') {
       emit(st, { k: 'regime_imposed', c: att, o: loser, x });
-      changeGovernment(st, loser);
+      changeGovernment(st, p, loser);
       f.demo[loser] = (f.demo[loser] + f.demo[att]) / 2;
       f.regime[loser] = f.demo[loser] > 0.5 ? 2 : f.demo[att] > 0.5 ? 1 : 0;
     }

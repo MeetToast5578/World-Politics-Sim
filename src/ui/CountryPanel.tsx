@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { Baseline, Obs } from '../engine/types';
 import type { CountryDetail } from '../worker/protocol';
 import type { SimEvent } from '../engine/state';
-import { formatDate } from '../engine/calendar';
+import { civilFromDays, formatDate } from '../engine/calendar';
 import { LineChart } from './LineChart';
 import { Pyramid } from './Pyramid';
 import { NewsList } from './NewsList';
@@ -158,6 +158,8 @@ export function CountryPanel({ baseline: b, detail, events, name, weight, coupRi
             <p>{REGIME_EXPLAIN[f.regime]}</p>
           </div>
           <div className="stats">
+            <Stat label="Leader" value={f.leaderReal && bc.leader ? bc.leader.name : 'A new leader'}
+              note={`age ${Math.floor((detail.day - f.leaderBorn) / 365.25)}, in office since ${civilFromDays(f.leaderSince).y}${f.leaderReal && bc.leader ? '' : ' (simulated)'}`} />
             <Stat label="Government approval" value={fmtPct(f.approval)} note={appr} tone={apprTone} />
             <Stat label="Unrest" value={unrest} tone={unrestTone} note={`${fmtPct(f.unrest)} (it started at ${fmtPct(f.unrest0)})`} />
             <Stat label="Legitimacy of the system" value={fmtPct(f.legit)} note="how much people accept how they are ruled" />

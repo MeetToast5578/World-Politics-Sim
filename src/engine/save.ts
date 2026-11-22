@@ -6,7 +6,7 @@ import { Simulation } from './sim';
 import type { Params } from './params';
 
 const FORMAT = 'world-sim-save';
-const VERSION = 12; // 2: single-year age × sex cohorts; 3: religion and politics; 4: diplomacy; 5: armed conflict; 6: provinces; 7: new states; 8: organisations; 9: education; 10: ethnic groups; 11: growth regimes; 12: childbearing age
+const VERSION = 13; // 2: single-year age × sex cohorts; 3: religion and politics; 4: diplomacy; 5: armed conflict; 6: provinces; 7: new states; 8: organisations; 9: education; 10: ethnic groups; 11: growth regimes; 12: childbearing age; 13: leaders
 
 function toB64(bytes: Uint8Array): string {
   let s = '';

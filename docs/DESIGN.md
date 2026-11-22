@@ -25,6 +25,7 @@ Sections marked **[implemented]** describe running code; **[design]** describes 
 | Armed conflict: civil and interstate wars, fighting, casualties, refugees, war damage, allies, military aid, nuclear deterrence, endings, territorial change by province, rebel-held territory, new states from secession | implemented (Phase 4, see §3.6) |
 | Education and learning: adults' schooling by cohort replacement, children's expected years, harmonised test scores; human capital in production; effects on fertility, democracy and civil-war risk | implemented (see §3.9) |
 | Ethnic groups (Ethnic Power Relations): 745 politically relevant groups with size, access to power and homeland provinces; exclusion raises civil-war risk, separatist wars start in homelands, groups gain and lose power, move with secession | implemented (see §3.10) |
+| Leaders: the real leader of every country at the start (Wikidata), simulated successors after every change of government, party handovers, death and ill health in office, succession crises in autocracies; checked against Archigos | implemented (see §3.11); elites as separate actors still planned |
 | Map colours from each country's flag, neighbours kept distinct | implemented |
 | Technology, environment, culture/ideology | design only (Phase 5); full order of remaining work in `docs/REALISM_PLAN.md` |
 
@@ -508,6 +509,23 @@ step): exclusions after rebel victories feed later wars.
 Limitations: one group per rebellion; group sizes are shares fixed at the start (no differential growth or
 assimilation); annexation moves provinces but not groups; EPR's statewide and dispersed groups have no homeland.
 
+### 3.11 Leaders [implemented]
+
+Data: the person in charge on 31 December of the reference year (Wikidata: head of state in presidential,
+semi-presidential, one-party and military systems, head of government otherwise; name, birth year, start in office;
+190 entities); Archigos 4.1 (leaders 1875-2015) for validation.
+
+* Every change of government (election lost, coup, revolution, overthrow, rebel victory, new state) installs a new,
+  simulated leader, aged 54 ± 9 (Archigos median entry age).
+* Yearly: the leader dies at 0.5 × the country's male Siler mortality at their age, or retires ill at 0.36 times that
+  rate (Archigos ratio); a death under an autocracy opens a succession crisis (legitimacy −0.15, coup memory +0.5,
+  unrest +0.05). In democracies the governing party replaces its leader at 15% a year, 45% after 8 years.
+* The interface names the real leader while they remain in office and marks successors as simulated.
+
+Validation (`npm run leaders`, 10 worlds × 30 years, against Archigos 1975-2015): exits regular 83% (77%), irregular
+9.5% (14.5%: the model's coups follow the calmer 2000s), natural death 5.3% (5.0%), ill health 2.2% (1.8%); age at
+entry 54 (54) and exit 59 (59); median tenure 3.8 years (3.0).
+
 ### 3.8 Optional narrative layer
 
 An LLM may later turn recorded events into prose. It receives only event records and state values and cannot write
@@ -528,7 +546,7 @@ from calendar boundary to boundary:
 every 1 Jan                  demography.yearly (cohort step → migration → transition) → economy.yearly → education.yearly
                              → religion.yearly (secularisation, indices) → diplomacy.yearly (UN position →
                                trust → crises, sanctions, alliances → trade multipliers, sanction costs)
-                             → ethnic.yearly (inclusion, exclusion) → conflict.yearly (onsets of civil and interstate wars, allies joining)
+                             → leaders.yearly (deaths, handovers) → ethnic.yearly (inclusion, exclusion) → conflict.yearly (onsets of civil and interstate wars, allies joining)
                              → chronicle.yearly → history.record
 ```
 
